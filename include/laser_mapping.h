@@ -24,6 +24,7 @@
 // #include "imu_processing.hpp"
 #include "pointcloud_preprocess.h"
 // #include "ikd-Tree/ikd_Tree.h"
+#include "use-ikfom.hpp"
 
 namespace fast_lio {
 
