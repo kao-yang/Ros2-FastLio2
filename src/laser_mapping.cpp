@@ -136,8 +136,8 @@ void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::Cons
             preprocess_->Process(changeMsg, ptr);
             lidar_buffer_.push_back(ptr);
             time_buffer_.push_back( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
-            LOG(INFO) << "time buffer input, time: " << std::to_string( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
-            LOG(INFO) << "lidar buffer input, size: " << ptr->points.size();
+            // LOG(INFO) << "time buffer input, time: " << std::to_string( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
+            // LOG(INFO) << "lidar buffer input, size: " << ptr->points.size();
 
             last_timestamp_lidar_ = fast_lio::common::FromRosTime(changeMsg->header.stamp);
         },
@@ -147,8 +147,72 @@ void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::Cons
 
 void LaserMapping::IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg){
     mtx_buffer_.lock();
+    auto timestamp = common::FromRosTime(msg->header.stamp);
+    if (timestamp < last_timestamp_imu_) {
+        LOG(WARNING) << "imu loop back, clear buffer";
+        imu_buffer_.clear();
+    }
+
+    last_timestamp_imu_ = timestamp;
     imu_buffer_.emplace_back(msg);
     mtx_buffer_.unlock();
+    Run();
+}
+
+
+bool LaserMapping::SyncPackages(){
+    if (lidar_buffer_.empty() || imu_buffer_.empty()) {
+        return false;
+    }
+
+    /*** get new lidar scan ***/
+    if (!lidar_pushed_) {
+        measures_.lidar_ = lidar_buffer_.front();
+        measures_.lidar_bag_time_ = time_buffer_.front();
+
+        if (measures_.lidar_->points.size() <= 1) {
+            LOG(WARNING) << "Too few input point cloud!";
+            lidar_end_time_ = measures_.lidar_bag_time_ + lidar_mean_scantime_;
+        } else if (measures_.lidar_->points.back().curvature / double(1000) < 0.5 * lidar_mean_scantime_) {
+            lidar_end_time_ = measures_.lidar_bag_time_ + lidar_mean_scantime_;
+        } else {
+            scan_num_++;
+            lidar_end_time_ = measures_.lidar_bag_time_ + measures_.lidar_->points.back().curvature / double(1000);
+            lidar_mean_scantime_ +=
+                (measures_.lidar_->points.back().curvature / double(1000) - lidar_mean_scantime_) / scan_num_;
+        }
+
+        measures_.lidar_end_time_ = lidar_end_time_;
+
+        lidar_pushed_ = true;
+    }
+
+    if (last_timestamp_imu_ < lidar_end_time_) {
+        return false;
+    }
+
+    /*** push imu_ data, and pop from imu_ buffer ***/
+    double imu_time = common::FromRosTime( imu_buffer_.front()->header.stamp );
+    measures_.imu_.clear();
+    while ((!imu_buffer_.empty()) && (imu_time < lidar_end_time_)) {
+        imu_time = common::FromRosTime( imu_buffer_.front()->header.stamp );
+        if (imu_time > lidar_end_time_) break;
+        measures_.imu_.push_back(imu_buffer_.front());
+        imu_buffer_.pop_front();
+    }
+
+    lidar_buffer_.pop_front();
+    time_buffer_.pop_front();
+    lidar_pushed_ = false;
+    return true;
+}
+
+void LaserMapping::Run(){
+    if (!SyncPackages()) {
+        return;
+    }
+    LOG(INFO) << "sync success, lidar time: " << std::to_string( measures_.lidar_end_time_ )
+                << " imu size: " << measures_.imu_.size();
 }
 
 } // namespace fast_lio
