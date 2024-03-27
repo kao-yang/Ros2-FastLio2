@@ -21,10 +21,9 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/conditional_removal.h>
 
-// #include "imu_processing.hpp"
+#include "imu_processing.h"
 #include "pointcloud_preprocess.h"
-// #include "ikd-Tree/ikd_Tree.h"
-#include "use-ikfom.hpp"
+// #include "ikd-Tree/ikd_Tree.h
 
 namespace fast_lio {
 
@@ -90,7 +89,7 @@ private:
 
     /// modules
     std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
-    // std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
+    std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
     // std::shared_ptr<KD_TREE<PointType>> ikdtree_ = nullptr;       // ikdtree
 
     /// local map related
@@ -103,7 +102,7 @@ private:
     /// params
     std::vector<double> extrinT_{3, 0.0};  // lidar-imu translation
     std::vector<double> extrinR_{9, 0.0};  // lidar-imu rotation
-    std::string map_file_path_;
+    bool extrinsic_est_en_ = true;
 
     /// point clouds data
     // CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
@@ -166,7 +165,7 @@ private:
     // state_ikfom state_point_;                          // ekf current state
     // vect3 pos_lidar_;                                  // lidar position after eskf update
     // common::V3D euler_cur_ = common::V3D::Zero();      // rotation in euler angles
-    // bool extrinsic_est_en_ = true;
+    
 
     /////////////////////////  debug show / save /////////////////////////////////////////////////////////
     bool run_in_offline_ = true;
