@@ -29,10 +29,10 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
 
     // Step 3. sub
     sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        imu_topic_, 10, std::bind(&LaserMapping::IMUCallBack, this, std::placeholders::_1));
+        imu_topic_, 1000, std::bind(&LaserMapping::IMUCallBack, this, std::placeholders::_1));
     sub_pcl_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        lidar_topic_, 10, std::bind(&LaserMapping::StandardPCLCallBack, this, std::placeholders::_1));
-
+        lidar_topic_, 100, std::bind(&LaserMapping::StandardPCLCallBack, this, std::placeholders::_1));
+    pub_odom_ = this->create_publisher<nav_msgs::msg::Odometry>("odometry", 10);
 }
 
 bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
@@ -166,6 +166,141 @@ void LaserMapping::IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg){
     imu_buffer_.emplace_back(msg);
     mtx_buffer_.unlock();
     Run();
+}
+
+void LaserMapping::PublishOdometry(){
+    nav_msgs::msg::Odometry odom;
+    odom.header.frame_id = "map";
+    odom.header.stamp = common::ToRosTime(lidar_end_time_);
+    odom.pose.pose.position.x = state_point_.pos.x();
+    odom.pose.pose.position.y = state_point_.pos.y();
+    odom.pose.pose.position.z = state_point_.pos.z();
+    odom.pose.pose.orientation.w = state_point_.rot.w();
+    odom.pose.pose.orientation.x = state_point_.rot.x();
+    odom.pose.pose.orientation.y = state_point_.rot.y();
+    odom.pose.pose.orientation.z = state_point_.rot.z();
+    pub_odom_->publish(odom);
+}
+
+/**
+ * Lidar point cloud registration
+ * will be called by the eskf custom observation model
+ * compute point-to-plane residual here
+ * @param s kf state
+ * @param ekfom_data H matrix
+ */
+void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
+    int cnt_pts = scan_down_body_->size();
+
+    std::vector<size_t> index(cnt_pts);
+    for (size_t i = 0; i < index.size(); ++i) {
+        index[i] = i;
+    }
+
+    Timer::Evaluate(
+        [&, this]() {
+            auto R_wl = (s.rot * s.offset_R_L_I).cast<float>();
+            auto t_wl = (s.rot * s.offset_T_L_I + s.pos).cast<float>();
+
+            /** closest surface search and residual computation **/
+            // std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i) {
+            for(size_t i=0; i<cnt_pts; ++i){
+                PointType &point_body = scan_down_body_->points[i];
+                PointType &point_world = scan_down_world_->points[i];
+
+                /* transform to world frame */
+                common::V3F p_body = point_body.getVector3fMap();
+                point_world.getVector3fMap() = R_wl * p_body + t_wl;
+                point_world.intensity = point_body.intensity;
+
+                auto &points_near = nearest_points_[i];
+                vector<float> pointSearchSqDis(options::NUM_MATCH_POINTS);
+                if (ekfom_data.converge) {
+                    /** Find the closest surfaces in the map **/
+                    ikdtree_->Nearest_Search(point_world, options::NUM_MATCH_POINTS, points_near, pointSearchSqDis);
+                    point_selected_surf_[i] = points_near.size() >= options::MIN_NUM_MATCH_POINTS;
+                    if (point_selected_surf_[i]) {
+                        point_selected_surf_[i] =
+                            common::esti_plane(plane_coef_[i], points_near, options::ESTI_PLANE_THRESHOLD);
+                    }
+                }
+
+                if (point_selected_surf_[i]) {
+                    auto temp = point_world.getVector4fMap();
+                    temp[3] = 1.0;
+                    float pd2 = plane_coef_[i].dot(temp);
+
+                    bool valid_corr = p_body.norm() > 81 * pd2 * pd2;
+                    if (valid_corr) {
+                        point_selected_surf_[i] = true;
+                        residuals_[i] = pd2;
+                    }
+                }
+            }//);
+        },
+        "    ObsModel (Lidar Match)");
+
+    effect_feat_num_ = 0;
+
+    corr_pts_.resize(cnt_pts);
+    corr_norm_.resize(cnt_pts);
+    for (int i = 0; i < cnt_pts; i++) {
+        if (point_selected_surf_[i]) {
+            corr_norm_[effect_feat_num_] = plane_coef_[i];
+            corr_pts_[effect_feat_num_] = scan_down_body_->points[i].getVector4fMap();
+            corr_pts_[effect_feat_num_][3] = residuals_[i];
+
+            effect_feat_num_++;
+        }
+    }
+    corr_pts_.resize(effect_feat_num_);
+    corr_norm_.resize(effect_feat_num_);
+
+    if (effect_feat_num_ < 1) {
+        ekfom_data.valid = false;
+        LOG(WARNING) << "No Effective Points!";
+        return;
+    }
+    LOG(INFO) << "effect points num: " << effect_feat_num_;
+    Timer::Evaluate(
+        [&, this]() {
+            /*** Computation of Measurement Jacobian matrix H and measurements vector ***/
+            ekfom_data.h_x = Eigen::MatrixXd::Zero(effect_feat_num_, 12);  // 23
+            ekfom_data.h.resize(effect_feat_num_);
+
+            index.resize(effect_feat_num_);
+            const common::M3F off_R = s.offset_R_L_I.toRotationMatrix().cast<float>();
+            const common::V3F off_t = s.offset_T_L_I.cast<float>();
+            const common::M3F Rt = s.rot.toRotationMatrix().transpose().cast<float>();
+
+            // std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i) {
+            for( size_t i=0; i<effect_feat_num_; ++i ){
+                common::V3F point_this_be = corr_pts_[i].head<3>();
+                common::M3F point_be_crossmat = SKEW_SYM_MATRIX(point_this_be);
+                common::V3F point_this = off_R * point_this_be + off_t;
+                common::M3F point_crossmat = SKEW_SYM_MATRIX(point_this);
+
+                /*** get the normal vector of closest surface/corner ***/
+                common::V3F norm_vec = corr_norm_[i].head<3>();
+
+                /*** calculate the Measurement Jacobian matrix H ***/
+                common::V3F C(Rt * norm_vec);
+                common::V3F A(point_crossmat * C);
+
+                if (extrinsic_est_en_) {
+                    common::V3F B(point_be_crossmat * off_R.transpose() * C);
+                    ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec[0], norm_vec[1], norm_vec[2], A[0], A[1], A[2], B[0],
+                        B[1], B[2], C[0], C[1], C[2];
+                } else {
+                    ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec[0], norm_vec[1], norm_vec[2], A[0], A[1], A[2], 0.0,
+                        0.0, 0.0, 0.0, 0.0, 0.0;
+                }
+
+                /*** Measurement: distance to the closest surface/corner ***/
+                ekfom_data.h(i) = -corr_pts_[i][3];
+            }//);
+        },
+        "    ObsModel (IEKF Build Jacobian)");
 }
 
 
@@ -341,6 +476,21 @@ void LaserMapping::Run(){
     }
     flg_EKF_inited_ = (measures_.lidar_bag_time_ - first_lidar_time_) >= options::INIT_TIME;
 
+    // Step 6.ICP and iterated Kalman filter update
+    Timer::Evaluate(
+        [&, this]() {
+            // iterated state estimation
+            double solve_H_time = 0;
+            // update the observation model, will call nn and point-to-plane residual computation
+            kf_.update_iterated_dyn_share_modified(options::LASER_POINT_COV, solve_H_time);
+            // save the state
+            state_point_ = kf_.get_x();
+            euler_cur_ = SO3ToEuler(state_point_.rot);
+            pos_lidar_ = state_point_.pos + state_point_.rot * state_point_.offset_T_L_I;
+            LOG(WARNING) << "pose after measure: " << state_point_.pos.transpose();
+        },
+        "IEKF Solve and Update");
+    PublishOdometry();
 }
 
 // tools
