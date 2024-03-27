@@ -114,14 +114,14 @@ private:
 
     /// point clouds data
     CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
-    // CloudPtr scan_down_body_{new PointCloudType()};   // downsampled scan in body
+    CloudPtr scan_down_body_{new PointCloudType()};   // downsampled scan in body
     // CloudPtr scan_down_world_{new PointCloudType()};  // downsampled scan in world
     // CloudPtr scan_wout_ground_{new PointCloudType()}; // 非地面点，未降采样，body系
     // CloudPtr mpPcdCloud{new PointCloudType()};         // cloud from pcd file
     // std::vector<PointVector> nearest_points_;         // nearest points of current scan
     // common::VV4F corr_pts_;                           // inlier pts
     // common::VV4F corr_norm_;                          // inlier plane norms
-    // pcl::VoxelGrid<PointType> voxel_scan_;            // voxel filter for current scan
+    pcl::VoxelGrid<PointType> voxel_scan_;            // voxel filter for current scan
     // pcl::VoxelGrid<PointType> voxel_map_;             // 地图点云体素滤波器
     // std::vector<float> residuals_;                    // point-to-plane residuals
     // std::vector<bool> point_selected_surf_;           // selected points
