@@ -417,6 +417,66 @@ void LaserMapping::FovSegment(){
 
 }
 
+void LaserMapping::MapIncremental() {
+    PointVector points_to_add;
+    PointVector point_no_need_downsample;
+
+    int cur_pts = scan_down_body_->size();
+    points_to_add.reserve(cur_pts);
+    point_no_need_downsample.reserve(cur_pts);
+
+    std::vector<size_t> index(cur_pts);
+    for (size_t i = 0; i < cur_pts; ++i) {
+        index[i] = i;
+    }
+    // step1.遍历w系下雷达扫描点
+    // std::for_each(std::execution::unseq, index.begin(), index.end(), [&](const size_t &i) {
+    for( size_t i=0; i<cur_pts; ++i ){
+        PointBodyToWorld(&(scan_down_body_->points[i]), &(scan_down_world_->points[i]));
+        PointType &point_world = scan_down_world_->points[i];
+        // 判断地图上的邻近点不未空，且ekf初始化成功
+        if (!nearest_points_[i].empty() && flg_EKF_inited_) {
+            // step1.1 是
+            const PointVector &points_near = nearest_points_[i];
+            // step1.1.1 求该点所在地图栅格的中心坐标
+            Eigen::Vector3f center =
+                ((point_world.getVector3fMap() / filter_size_map_min_).array().floor() + 0.5) * filter_size_map_min_;
+            // step1.1.2 求该点的最近邻点距地图栅格的中心的距离
+            Eigen::Vector3f dis_2_center = points_near[0].getVector3fMap() - center;
+            // step1.1.3 根据最近邻点距离判断，该点位置不在对应栅格中，则压入point_no_need_downsample
+            if (fabs(dis_2_center.x()) > 0.5 * filter_size_map_min_ &&
+                fabs(dis_2_center.y()) > 0.5 * filter_size_map_min_ &&
+                fabs(dis_2_center.z()) > 0.5 * filter_size_map_min_) {
+                point_no_need_downsample.emplace_back(point_world);
+                // return;
+                continue;
+                // TODO
+            }
+            // step1.1.4 求该点与栅格中心的欧式距离
+            bool need_add = true;
+            float dist = common::calc_dist(point_world.getVector3fMap(), center);
+            // step1.1.5 如果该点的最近邻点数量>5,遍历邻近点，如果邻近点与栅格中心距离小于该点距离，则不添加(只需要里中心最近的点)
+            if (points_near.size() >= options::NUM_MATCH_POINTS) {
+                for (int readd_i = 0; readd_i < options::NUM_MATCH_POINTS; readd_i++) {
+                    if (common::calc_dist(points_near[readd_i].getVector3fMap(), center) < dist + 1e-6) {
+                        need_add = false;
+                        break;
+                    }
+                }
+            }
+            if (need_add) {
+                points_to_add.emplace_back(point_world);
+            }
+        } else {// step1.1 否，即第一帧，则直接加入
+            points_to_add.emplace_back(point_world);
+        }
+    }//);
+
+    int add_point_size = ikdtree_->Add_Points(points_to_add,true);
+    ikdtree_->Add_Points(point_no_need_downsample,false);
+}
+
+
 void LaserMapping::Run(){
     // Step 1. sync sensor deque
     if (!SyncPackages()) {
@@ -491,6 +551,9 @@ void LaserMapping::Run(){
         },
         "IEKF Solve and Update");
     PublishOdometry();
+
+    // Step 7.update local map
+    Timer::Evaluate([&, this]() { MapIncremental(); }, "    Incremental Mapping");
 }
 
 // tools
