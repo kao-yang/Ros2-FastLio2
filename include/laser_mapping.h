@@ -77,7 +77,11 @@ class LaserMapping : public rclcpp::Node {
     // void PrintState(const state_ikfom &s);
 
 private:
-   ::rclcpp::Node::SharedPtr node_handler_;
+    // ros
+    ::rclcpp::Node::SharedPtr node_handler_;
+    std::string lidar_topic_;
+    std::string imu_topic_;
+
     /// modules
     // std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
     // std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
