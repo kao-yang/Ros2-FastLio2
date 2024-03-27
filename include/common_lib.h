@@ -13,6 +13,8 @@
 
 #include "options.h"
 #include "so3_math.h"
+#include "utils.h"
+#include "options.h"
 
 using PointType = pcl::PointXYZINormal;
 using PointCloudType = pcl::PointCloud<PointType>;

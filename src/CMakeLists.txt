@@ -2,6 +2,7 @@ add_library(${PROJECT_NAME}
     laser_mapping.cpp
     options.cpp
     pointcloud_preprocess.cpp
+    utils.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}

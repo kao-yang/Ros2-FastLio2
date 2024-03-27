@@ -115,8 +115,8 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
 
 void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg){
     mtx_buffer_.lock();
-    // Timer::Evaluate(
-    //     [&, this]() {
+    Timer::Evaluate(
+        [&, this]() {
             PointCloudType::Ptr ptr(new PointCloudType());
 
             sensor_msgs::msg::PointCloud2::SharedPtr changeMsg (new sensor_msgs::msg::PointCloud2(*msg));
@@ -139,8 +139,8 @@ void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::Cons
             LOG(INFO) << "lidar buffer input, size: " << ptr->points.size();
 
             last_timestamp_lidar_ = fast_lio::common::FromRosTime(changeMsg->header.stamp);
-        //},
-        //"Preprocess (Standard)");
+        },
+        "Preprocess (Standard)");
     mtx_buffer_.unlock();
 }
 

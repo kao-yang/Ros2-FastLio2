@@ -22,11 +22,8 @@
 #include <pcl/filters/conditional_removal.h>
 
 // #include "imu_processing.hpp"
-#include "options.h"
 #include "pointcloud_preprocess.h"
 // #include "ikd-Tree/ikd_Tree.h"
-
-// using std::placeholders::_1;
 
 namespace fast_lio {
 
@@ -37,6 +34,7 @@ class LaserMapping : public rclcpp::Node {
     LaserMapping(const std::string& sParamsDir);
     LaserMapping() = delete;
     ~LaserMapping() {
+        fast_lio::Timer::PrintAll();
         LOG(INFO) << "laser mapping deconstruct";
     }
 
