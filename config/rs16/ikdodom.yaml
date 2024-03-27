@@ -1,0 +1,70 @@
+common:                         # 常规参数们，主要是话题名
+  dataset: "ifly"               # 数据集类型，无用，仅用作标识
+  lidar_topic: "/rslidar_points"  # lidar话题名
+  imu_topic: "/imu_raw"         # imu话题名
+  time_sync_en: false           # 时间同步使能，一般置false即可
+  load_map_and_loop: false      # load history map and loop info
+  update_map_and_loop: true    # update map and loop info
+
+preprocess:                   # pointcloud_preprocess.h使用的参数们，用于lidar点云预处理
+  lidar_type: 3                 # 1 for Velodyne LiDAR, 2 for ouster LiDAR, 3 for rs16
+  scan_line: 16                 # 雷达线数，用于求解时间戳，即如果有时间戳，则无用
+  horizon_num: 1800             # 雷达水平分辨率
+  blind: 1.0                    # 雷达盲区大小，单位m，盲区内的点删除
+  time_scale: 1000.              # 兼容不同数据集的时间单位，仅对Velodyne LiDAR(lidar_type=1)生效，也和rs16一致
+  point_filter_num: 1           # 隔几个点取一个点，即点云滤波降采样
+  ground_points_deg: 10.0       # 地面点角度阈值
+
+mapping:                      # 建图相关的参数
+  cube_side_length: 500         # ikd的cube大小，可以理解为localmap区域大小
+  filter_size_surf: 0.5         # 输入雷达点云降采样大小
+  filter_size_map: 0.5          # ikd地图点云降采样大小
+  max_iteration: 3              # ekf最大迭代次数
+  esti_plane_threshold: 0.1     # 点与地图平面距离阈值，用于判断是否为有效匹配点
+  acc_cov: 0.1                  # 加计方差大小，用于计算Q阵
+  gyr_cov: 0.1                  # 陀螺方差大小，用于计算Q阵
+  b_acc_cov: 0.0001             # 加计零偏方差大小，用于计算Q阵
+  b_gyr_cov: 0.0001             # 陀螺零偏方差大小，用于计算Q阵
+  det_range: 150.0              # 雷达探测距离，单位m 150
+  extrinsic_est_en: false        # 使能在线估计IMU-LiDAR外参，默认为true
+  extrinsic_T: [ -0.092227430293060, 0.047974446594559, 0.114346334037126 ]   # 平移外参I->L
+              # -0.062, 0.014, 0.1  
+              # [ -0.101468961650699, 0.020774026199960, 0.103870630903158 ]
+              # [ -0.127118893808024, 0.021332265793078, 0.109270407891723 ]
+  extrinsic_R: [ 0.9988652,  0.0294028, -0.0374664,
+              -0.0299010,  0.9994708, -0.0128084,
+              0.0370700,  0.0139141,  0.9992158 ]
+              # [0.9999720,  0.0068299, -0.0030389,
+              #   -0.0068501,  0.9999541, -0.0066967,
+              #   0.0029930,  0.0067173,  0.9999729]   
+              # [  0.9998268,  0.0159122, -0.0096498,
+              #     -0.0160014,  0.9998292, -0.0092465,
+              #     0.0095011,  0.0093993,  0.9999107 ]
+              # [ 0.9995947,  0.0243116, -0.0148117,
+              #   -0.0244534,  0.9996561, -0.0094676,
+              # 0.0145764,  0.0098259,  0.9998455 ]
+
+pmap:
+  th_ground_deg: 20
+  th_z_bot: -1.0
+  th_z_top: 0.05
+  th_range_min: 0.5
+  th_range_max: 30
+  th_intensity: -1.0
+  num_scan: 16
+  horizon_scan: 1800
+  ang_res_y: 2.0
+  map_resolution: 0.1
+
+publish:                      # 发布相关的参数
+  path_publish_en: true         # 使能path发布
+  scan_publish_en: true         # 使能点云发布，false则部发布任何点云
+  scan_effect_pub_en: true      # 使能匹配成功的有效点云的发布
+  dense_publish_en: false       # 使能稠密点云发布，false则发布降采样的w系点云
+  scan_bodyframe_pub_en: true   # 使能IMU-body系点云发布
+
+path_save_en: true              # 保存轨迹，用于精度计算和比较
+
+pcd_save:                     # 保存pcd相关参数
+  pcd_save_en: false             # 使能保存pcd
+  interval: -1                  # 每个pcd文件保存多少帧lidar点云数据，-1 : 所有的点云帧均被保存
