@@ -8,7 +8,7 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
         // Step 0. init ros2 node handle
     node_handler_ = std::shared_ptr<::rclcpp::Node>(this, [](::rclcpp::Node *) {});
     // Step 1.init ptr
-    // TODO
+    preprocess_.reset(new PointCloudPreprocess());
 
     // Step 2.load params
     if ( !LoadParamsFromYAML( sParamsDir+ "ikdodom.yaml") ){
@@ -42,11 +42,11 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         lidar_topic_ = yaml["common"]["lidar_topic"].as<std::string>();
         imu_topic_ = yaml["common"]["imu_topic"].as<std::string>();
         // // 雷达预处理参数
-        // lidar_type = yaml["preprocess"]["lidar_type"].as<int>();
-        // preprocess_->NumScans() = yaml["preprocess"]["scan_line"].as<int>();
-        // preprocess_->Blind() = yaml["preprocess"]["blind"].as<double>();
-        // preprocess_->TimeScale() = yaml["preprocess"]["time_scale"].as<double>();
-        // preprocess_->PointFilterNum() = yaml["preprocess"]["point_filter_num"].as<int>();
+        lidar_type = yaml["preprocess"]["lidar_type"].as<int>();
+        preprocess_->NumScans() = yaml["preprocess"]["scan_line"].as<int>();
+        preprocess_->Blind() = yaml["preprocess"]["blind"].as<double>();
+        preprocess_->TimeScale() = yaml["preprocess"]["time_scale"].as<double>();
+        preprocess_->PointFilterNum() = yaml["preprocess"]["point_filter_num"].as<int>();
         // // 建图相关参数
         // cube_len_ = yaml["mapping"]["cube_side_length"].as<double>();
         // filter_size_surf_min = yaml["mapping"]["filter_size_surf"].as<double>();
@@ -61,17 +61,6 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         // extrinsic_est_en_ = yaml["mapping"]["extrinsic_est_en"].as<bool>();
         // extrinT_ = yaml["mapping"]["extrinsic_T"].as<std::vector<double>>();
         // extrinR_ = yaml["mapping"]["extrinsic_R"].as<std::vector<double>>();
-        // // cloud转scan地图相关参数
-        // p2s_->ThGroundDeg() = yaml["pmap"]["th_ground_deg"].as<float>();
-        // p2s_->ThZBot() = yaml["pmap"]["th_z_bot"].as<float>();
-        // p2s_->ThZTop() = yaml["pmap"]["th_z_top"].as<float>();
-        // p2s_->ThRangeMin() = yaml["pmap"]["th_range_min"].as<float>();
-        // p2s_->ThRangeMax() = yaml["pmap"]["th_range_max"].as<float>();
-        // p2s_->ThIntensity() = yaml["pmap"]["th_intensity"].as<float>();
-        // p2s_->NumberScan() = yaml["pmap"]["num_scan"].as<int>();
-        // p2s_->HorizonScan() = yaml["pmap"]["horizon_scan"].as<int>();
-        // p2s_->AngResY() = yaml["pmap"]["ang_res_y"].as<float>();
-        // pm_->MapResolution() = yaml["pmap"]["map_resolution"].as<float>();
         // // 发布相关参数
         // path_pub_en_ = yaml["publish"]["path_publish_en"].as<bool>();
         // scan_pub_en_ = yaml["publish"]["scan_publish_en"].as<bool>();
@@ -89,20 +78,20 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         return false;
     }
 
-    // LOG(INFO) << "lidar_type " << lidar_type;
-    // if (lidar_type == 1) {
-    //     preprocess_->SetLidarType(LidarType::VELO16);
-    //     LOG(INFO) << "Using Velodyne 16 Lidar";
-    // } else if (lidar_type == 2) {
-    //     preprocess_->SetLidarType(LidarType::OUST64);
-    //     LOG(INFO) << "Using OUST 64 Lidar";
-    // } else if (lidar_type == 3){
-    //     preprocess_->SetLidarType(LidarType::RS16);
-    //     LOG(INFO) << "Using RS 16 Lidar";
-    // }else {
-    //     LOG(WARNING) << "unknown lidar_type";
-    //     return false;
-    // }
+    LOG(INFO) << "lidar_type " << lidar_type;
+    if (lidar_type == 1) {
+        preprocess_->SetLidarType(LidarType::VELO16);
+        LOG(INFO) << "Using Velodyne 16 Lidar";
+    } else if (lidar_type == 2) {
+        preprocess_->SetLidarType(LidarType::OUST64);
+        LOG(INFO) << "Using OUST 64 Lidar";
+    } else if (lidar_type == 3){
+        preprocess_->SetLidarType(LidarType::RS16);
+        LOG(INFO) << "Using RS 16 Lidar";
+    }else {
+        LOG(WARNING) << "unknown lidar_type";
+        return false;
+    }
 
     // voxel_scan_.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
     // voxel_map_.setLeafSize(0.1, 0.1, 0.1);
@@ -128,36 +117,30 @@ void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::Cons
     mtx_buffer_.lock();
     // Timer::Evaluate(
     //     [&, this]() {
-    //         PointCloudType::Ptr ptr(new PointCloudType());
-    //         PointCloudType::Ptr wout_ground(new PointCloudType());
+            PointCloudType::Ptr ptr(new PointCloudType());
 
-    //         sensor_msgs::PointCloud2::Ptr changeMsg (new sensor_msgs::PointCloud2(*msg));
-    //         // timestamp correct for rs16
-    //         if (preprocess_->GetLidarType()==LidarType::RS16){
-    //             double timeOffSet = 0;
-    //             unsigned char tmp[8];
-    //             for(int i=0;i<8;i++){
-    //                 tmp[i] = changeMsg->data[18+i];
-    //             }
-    //             timeOffSet = *(double*)tmp;
-    //             // LOG(WARNING) << "timeOffSet:" << std::to_string(timeOffSet);
-    //             // LOG(WARNING) << "time-0.1:" << std::to_string(changeMsg->header.stamp.toSec()-0.1);
-    //             changeMsg->header.stamp.fromSec(timeOffSet);
-    //         }
+            sensor_msgs::msg::PointCloud2::SharedPtr changeMsg (new sensor_msgs::msg::PointCloud2(*msg));
+            // timestamp correct for rs16
+            if (preprocess_->GetLidarType()==LidarType::RS16){
+                double timeOffSet = 0;
+                unsigned char tmp[8];
+                for(int i=0;i<8;i++){
+                    tmp[i] = changeMsg->data[18+i];
+                }
+                timeOffSet = *(double*)tmp;
+                changeMsg->header.stamp = fast_lio::common::ToRosTime(timeOffSet);
+            }
             
 
-    //         preprocess_->Process(changeMsg, ptr);
-    //         lidar_buffer_.push_back(ptr);
-    //         time_buffer_.push_back(changeMsg->header.stamp.toSec());
-    //         while (lidar_buffer_.size()>100){
-    //             lidar_buffer_.pop_front();
-    //         }
-    //         while (time_buffer_.size()>100){
-    //             time_buffer_.pop_front();
-    //         }
-    //         last_timestamp_lidar_ = changeMsg->header.stamp.toSec();
-    //     },
-    //     "Preprocess (Standard)");
+            preprocess_->Process(changeMsg, ptr);
+            lidar_buffer_.push_back(ptr);
+            time_buffer_.push_back( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
+            LOG(INFO) << "time buffer input, time: " << std::to_string( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
+            LOG(INFO) << "lidar buffer input, size: " << ptr->points.size();
+
+            last_timestamp_lidar_ = fast_lio::common::FromRosTime(changeMsg->header.stamp);
+        //},
+        //"Preprocess (Standard)");
     mtx_buffer_.unlock();
 }
 
