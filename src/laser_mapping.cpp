@@ -5,10 +5,11 @@ namespace fast_lio {
 LaserMapping::LaserMapping(const std::string& sParamsDir)
         : Node("ros2_fast_lio2")
 {
-        // Step 0. init ros2 node handle
+    // Step 0. init ros2 node handle
     node_handler_ = std::shared_ptr<::rclcpp::Node>(this, [](::rclcpp::Node *) {});
     // Step 1.init ptr
-    preprocess_.reset(new PointCloudPreprocess());
+    preprocess_.reset( new PointCloudPreprocess() );
+    p_imu_.reset( new ImuProcess() );
 
     // Step 2.load params
     if ( !LoadParamsFromYAML( sParamsDir+ "ikdodom.yaml") ){
@@ -30,8 +31,8 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
     int lidar_type;
     double gyr_cov, acc_cov, b_gyr_cov, b_acc_cov;
     double filter_size_surf_min;
-    // common::V3D lidar_T_wrt_IMU;
-    // common::M3D lidar_R_wrt_IMU;
+    common::V3D lidar_T_wrt_IMU;
+    common::M3D lidar_R_wrt_IMU;
 
     auto yaml = YAML::LoadFile(yaml_file);
     try {
@@ -53,14 +54,14 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         // filter_size_map_min_ = yaml["mapping"]["filter_size_map"].as<float>();
         options::NUM_MAX_ITERATIONS = yaml["mapping"]["max_iteration"].as<int>();
         options::ESTI_PLANE_THRESHOLD = yaml["mapping"]["esti_plane_threshold"].as<float>();
-        // acc_cov = yaml["mapping"]["acc_cov"].as<float>();
-        // gyr_cov = yaml["mapping"]["gyr_cov"].as<float>();
-        // b_acc_cov = yaml["mapping"]["b_acc_cov"].as<float>();
-        // b_gyr_cov = yaml["mapping"]["b_gyr_cov"].as<float>();
+        acc_cov = yaml["mapping"]["acc_cov"].as<float>();
+        gyr_cov = yaml["mapping"]["gyr_cov"].as<float>();
+        b_acc_cov = yaml["mapping"]["b_acc_cov"].as<float>();
+        b_gyr_cov = yaml["mapping"]["b_gyr_cov"].as<float>();
         // det_range_ = yaml["mapping"]["det_range"].as<float>();
-        // extrinsic_est_en_ = yaml["mapping"]["extrinsic_est_en"].as<bool>();
-        // extrinT_ = yaml["mapping"]["extrinsic_T"].as<std::vector<double>>();
-        // extrinR_ = yaml["mapping"]["extrinsic_R"].as<std::vector<double>>();
+        extrinsic_est_en_ = yaml["mapping"]["extrinsic_est_en"].as<bool>();
+        extrinT_ = yaml["mapping"]["extrinsic_T"].as<std::vector<double>>();
+        extrinR_ = yaml["mapping"]["extrinsic_R"].as<std::vector<double>>();
         // // 发布相关参数
         // path_pub_en_ = yaml["publish"]["path_publish_en"].as<bool>();
         // scan_pub_en_ = yaml["publish"]["scan_publish_en"].as<bool>();
@@ -96,17 +97,17 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
     // voxel_scan_.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
     // voxel_map_.setLeafSize(0.1, 0.1, 0.1);
 
-    // lidar_T_wrt_IMU = common::VecFromArray<double>(extrinT_);
-    // lidar_R_wrt_IMU = common::MatFromArray<double>(extrinR_);
+    lidar_T_wrt_IMU = common::VecFromArray<double>(extrinT_);
+    lidar_R_wrt_IMU = common::MatFromArray<double>(extrinR_);
 
-    // p_imu_->SetExtrinsic(lidar_T_wrt_IMU, lidar_R_wrt_IMU);
-    // p_imu_->SetGyrCov(common::V3D(gyr_cov, gyr_cov, gyr_cov));
-    // p_imu_->SetAccCov(common::V3D(acc_cov, acc_cov, acc_cov));
-    // p_imu_->SetGyrBiasCov(common::V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-    // p_imu_->SetAccBiasCov(common::V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    p_imu_->SetExtrinsic(lidar_T_wrt_IMU, lidar_R_wrt_IMU);
+    p_imu_->SetGyrCov(common::V3D(gyr_cov, gyr_cov, gyr_cov));
+    p_imu_->SetAccCov(common::V3D(acc_cov, acc_cov, acc_cov));
+    p_imu_->SetGyrBiasCov(common::V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+    p_imu_->SetAccBiasCov(common::V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
-    // LOG(WARNING) << "extrin T: " << lidar_T_wrt_IMU.transpose();
-    // LOG(WARNING) << "extrin R: " << lidar_R_wrt_IMU.transpose();
+    LOG(WARNING) << "extrin T: " << lidar_T_wrt_IMU.transpose();
+    LOG(WARNING) << "extrin R: " << lidar_R_wrt_IMU.transpose();
 
     return true;
 }
