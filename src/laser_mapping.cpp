@@ -58,16 +58,16 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         preprocess_->TimeScale() = yaml["preprocess"]["time_scale"].as<double>();
         preprocess_->PointFilterNum() = yaml["preprocess"]["point_filter_num"].as<int>();
         // // 建图相关参数
-        // cube_len_ = yaml["mapping"]["cube_side_length"].as<double>();
-        // filter_size_surf_min = yaml["mapping"]["filter_size_surf"].as<double>();
-        // filter_size_map_min_ = yaml["mapping"]["filter_size_map"].as<float>();
+        cube_len_ = yaml["mapping"]["cube_side_length"].as<double>();
+        filter_size_surf_min = yaml["mapping"]["filter_size_surf"].as<double>();
+        filter_size_map_min_ = yaml["mapping"]["filter_size_map"].as<float>();
         options::NUM_MAX_ITERATIONS = yaml["mapping"]["max_iteration"].as<int>();
         options::ESTI_PLANE_THRESHOLD = yaml["mapping"]["esti_plane_threshold"].as<float>();
         acc_cov = yaml["mapping"]["acc_cov"].as<float>();
         gyr_cov = yaml["mapping"]["gyr_cov"].as<float>();
         b_acc_cov = yaml["mapping"]["b_acc_cov"].as<float>();
         b_gyr_cov = yaml["mapping"]["b_gyr_cov"].as<float>();
-        // det_range_ = yaml["mapping"]["det_range"].as<float>();
+        det_range_ = yaml["mapping"]["det_range"].as<float>();
         extrinsic_est_en_ = yaml["mapping"]["extrinsic_est_en"].as<bool>();
         extrinT_ = yaml["mapping"]["extrinsic_T"].as<std::vector<double>>();
         extrinR_ = yaml["mapping"]["extrinsic_R"].as<std::vector<double>>();
@@ -214,6 +214,72 @@ bool LaserMapping::SyncPackages(){
     time_buffer_.pop_front();
     lidar_pushed_ = false;
     return true;
+}
+
+void LaserMapping::FovSegment(){
+    // step1.声明待删除的地图box队列:cub_needrm
+    vector<BoxPointType> cub_needrm;
+    vector<BoxPointType> cub_needadd;
+    cub_needrm.clear();
+    // step2.获得lidar在w系下的位姿
+    vect3 pos_lid = pos_lidar_;
+    // step3.初始化box
+    if(!flg_box_inited_){
+        for (int i = 0; i < 3; i++){
+            localmap_box_.vertex_min[i] = pos_lid(i) - cube_len_ / 2.0;
+            localmap_box_.vertex_max[i] = pos_lid(i) + cube_len_ / 2.0;
+        }
+        flg_box_inited_ = true;
+        return;
+    }
+    // step4. 求取距离和是否需要移动
+    float dist_to_map_edge[3][2];   // lidar与立方体六个面的距离
+    bool need_move = false;         // 是否需要移动
+    for (int i = 0; i < 3; i++){
+        dist_to_map_edge[i][0] = fabs(pos_lid(i) - localmap_box_.vertex_min[i]);
+        dist_to_map_edge[i][1] = fabs(pos_lid(i) - localmap_box_.vertex_max[i]);
+        if (dist_to_map_edge[i][0] <= options::MOV_THRESHOLD * det_range_ 
+           || dist_to_map_edge[i][1] <= options::MOV_THRESHOLD * det_range_)
+            need_move = true;
+    }
+    if (!need_move) return;
+
+    // step5. 进行移动localmap操作
+    BoxPointType New_LocalMap_Points, tmp_boxpoints_rm, tmp_boxpoints_add;  // 新的局部地图盒子边界点
+    New_LocalMap_Points = localmap_box_;
+    // step5.1 求取移动距离
+    float mov_dist = max((cube_len_ - 2.0 * options::MOV_THRESHOLD * det_range_) * 0.5 * 0.9, 
+                          double(det_range_ * (options::MOV_THRESHOLD -1)));
+    // step5.2 求取待删除的矩形大小
+    for (int i = 0; i < 3; i++){
+        tmp_boxpoints_rm = localmap_box_;
+        tmp_boxpoints_add = localmap_box_;
+        if (dist_to_map_edge[i][0] <= options::MOV_THRESHOLD * det_range_){
+            New_LocalMap_Points.vertex_max[i] -= mov_dist;
+            New_LocalMap_Points.vertex_min[i] -= mov_dist;
+            tmp_boxpoints_rm.vertex_min[i] = localmap_box_.vertex_max[i] - mov_dist;
+            cub_needrm.push_back(tmp_boxpoints_rm);
+            tmp_boxpoints_add.vertex_min[i] = New_LocalMap_Points.vertex_min[i];
+            tmp_boxpoints_add.vertex_max[i] = localmap_box_.vertex_min[i];
+            cub_needadd.push_back(tmp_boxpoints_add);
+        } else if (dist_to_map_edge[i][1] <= options::MOV_THRESHOLD * det_range_){
+            New_LocalMap_Points.vertex_max[i] += mov_dist;
+            New_LocalMap_Points.vertex_min[i] += mov_dist;
+            tmp_boxpoints_rm.vertex_max[i] = localmap_box_.vertex_min[i] + mov_dist;
+            cub_needrm.push_back(tmp_boxpoints_rm);
+            tmp_boxpoints_add.vertex_min[i] = localmap_box_.vertex_max[i];
+            tmp_boxpoints_add.vertex_max[i] = New_LocalMap_Points.vertex_max[i];
+            cub_needadd.push_back(tmp_boxpoints_add);
+        }
+    }
+    // step5.3 更新localmap地图包围盒
+    localmap_box_ = New_LocalMap_Points;
+    // step5.4 删除待删除点
+    PointVector points_history;
+    ikdtree_->acquire_removed_points(points_history);
+    // step5.5 根据cub_needrm删除对应localmap
+    if(cub_needrm.size() > 0) ikdtree_->Delete_Point_Boxes(cub_needrm);
+
 }
 
 void LaserMapping::Run(){
