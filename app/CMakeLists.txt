@@ -24,5 +24,5 @@ install(TARGETS
 
 install(DIRECTORY
   ${PROJECT_SOURCE_DIR}/launch
-  # rviz
+  ${PROJECT_SOURCE_DIR}/rviz_cfg
   DESTINATION share/${PROJECT_NAME})
