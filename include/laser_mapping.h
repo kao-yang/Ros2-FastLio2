@@ -61,8 +61,9 @@ class LaserMapping : public rclcpp::Node {
     template <typename T>
     void SetPosestamp(T &out);
 
-    // void PointBodyToWorld(PointType const *pi, PointType *const po);
-    // void PointBodyToWorld(const common::V3F &pi, PointType *const po);
+    // tools
+    void PointBodyToWorld(PointType const *pi, PointType *const po);
+    void PointBodyToWorld(const common::V3F &pi, PointType *const po);
     // void PointBodyLidarToIMU(PointType const *const pi, PointType *const po);
 
     void MapIncremental();
@@ -115,17 +116,16 @@ private:
     /// point clouds data
     CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
     CloudPtr scan_down_body_{new PointCloudType()};   // downsampled scan in body
-    // CloudPtr scan_down_world_{new PointCloudType()};  // downsampled scan in world
-    // CloudPtr scan_wout_ground_{new PointCloudType()}; // 非地面点，未降采样，body系
-    // CloudPtr mpPcdCloud{new PointCloudType()};         // cloud from pcd file
-    // std::vector<PointVector> nearest_points_;         // nearest points of current scan
-    // common::VV4F corr_pts_;                           // inlier pts
-    // common::VV4F corr_norm_;                          // inlier plane norms
+    CloudPtr scan_down_world_{new PointCloudType()};  // downsampled scan in world
+    std::vector<PointVector> nearest_points_;         // nearest points of current scan
+    common::VV4F corr_pts_;                           // inlier pts
+    common::VV4F corr_norm_;                          // inlier plane norms
     pcl::VoxelGrid<PointType> voxel_scan_;            // voxel filter for current scan
     // pcl::VoxelGrid<PointType> voxel_map_;             // 地图点云体素滤波器
-    // std::vector<float> residuals_;                    // point-to-plane residuals
-    // std::vector<bool> point_selected_surf_;           // selected points
-    // common::VV4F plane_coef_;                         // plane coeffs
+    std::vector<float> residuals_;                    // point-to-plane residuals
+    std::vector<bool> point_selected_surf_;           // selected points
+    common::VV4F plane_coef_;                         // plane coeffs
+    bool flg_EKF_inited_ = false;
 
     /// ros pub and sub stuffs
     ::rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
@@ -160,7 +160,7 @@ private:
     int scan_count_ = 0;
     int publish_count_ = 0;
     bool flg_first_scan_ = true;
-    bool flg_EKF_inited_ = false;
+    
     int pcd_index_ = 0;
     double lidar_mean_scantime_ = 0.0;
     int scan_num_ = 0;  // get lidar scan num in SyncPackages()， to get mean lidar scan time

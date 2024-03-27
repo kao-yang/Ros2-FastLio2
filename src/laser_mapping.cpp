@@ -316,12 +316,55 @@ void LaserMapping::Run(){
         },
         "Downsample PointCloud");
     int cur_pts = scan_down_body_->size();
-    LOG(INFO) << "lidar size after ds: " << cur_pts;
     if (cur_pts < 5) {
         LOG(WARNING) << "Too few points, skip this scan!" << scan_undistort_->size() << ", " << scan_down_body_->size();
         return;
     }
 
+    scan_down_world_->resize(cur_pts);
+    nearest_points_.resize(cur_pts);
+    residuals_.resize(cur_pts, 0);
+    point_selected_surf_.resize(cur_pts, true);
+    plane_coef_.resize(cur_pts, common::V4F::Zero());
+    // Step 5.the first scan,init
+    if (flg_first_scan_) {
+        if (ikdtree_->Root_Node == nullptr){
+            ikdtree_->set_downsample_param(filter_size_map_min_);
+            for(int i = 0; i < cur_pts; i++)
+                PointBodyToWorld(&(scan_down_body_->points[i]), &(scan_down_world_->points[i]));
+            ikdtree_->Build(scan_down_world_->points);
+        }
+
+        first_lidar_time_ = measures_.lidar_bag_time_;
+        flg_first_scan_ = false;
+        return;
+    }
+    flg_EKF_inited_ = (measures_.lidar_bag_time_ - first_lidar_time_) >= options::INIT_TIME;
+
+}
+
+// tools
+
+void LaserMapping::PointBodyToWorld(const PointType *pi, PointType *const po) {
+    common::V3D p_body(pi->x, pi->y, pi->z);
+    common::V3D p_global(state_point_.rot * (state_point_.offset_R_L_I * p_body + state_point_.offset_T_L_I) +
+                         state_point_.pos);
+
+    po->x = p_global(0);
+    po->y = p_global(1);
+    po->z = p_global(2);
+    po->intensity = pi->intensity;
+}
+
+void LaserMapping::PointBodyToWorld(const common::V3F &pi, PointType *const po) {
+    common::V3D p_body(pi.x(), pi.y(), pi.z());
+    common::V3D p_global(state_point_.rot * (state_point_.offset_R_L_I * p_body + state_point_.offset_T_L_I) +
+                         state_point_.pos);
+
+    po->x = p_global(0);
+    po->y = p_global(1);
+    po->z = p_global(2);
+    po->intensity = std::abs(po->z);
 }
 
 } // namespace fast_lio
