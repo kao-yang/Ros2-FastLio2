@@ -51,8 +51,8 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         // cube_len_ = yaml["mapping"]["cube_side_length"].as<double>();
         // filter_size_surf_min = yaml["mapping"]["filter_size_surf"].as<double>();
         // filter_size_map_min_ = yaml["mapping"]["filter_size_map"].as<float>();
-        // options::NUM_MAX_ITERATIONS = yaml["mapping"]["max_iteration"].as<int>();
-        // options::ESTI_PLANE_THRESHOLD = yaml["mapping"]["esti_plane_threshold"].as<float>();
+        options::NUM_MAX_ITERATIONS = yaml["mapping"]["max_iteration"].as<int>();
+        options::ESTI_PLANE_THRESHOLD = yaml["mapping"]["esti_plane_threshold"].as<float>();
         // acc_cov = yaml["mapping"]["acc_cov"].as<float>();
         // gyr_cov = yaml["mapping"]["gyr_cov"].as<float>();
         // b_acc_cov = yaml["mapping"]["b_acc_cov"].as<float>();
@@ -125,11 +125,46 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
 
 
 void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg){
-    LOG_FIRST_N(INFO,10) << "get lidar topic";
+    mtx_buffer_.lock();
+    // Timer::Evaluate(
+    //     [&, this]() {
+    //         PointCloudType::Ptr ptr(new PointCloudType());
+    //         PointCloudType::Ptr wout_ground(new PointCloudType());
+
+    //         sensor_msgs::PointCloud2::Ptr changeMsg (new sensor_msgs::PointCloud2(*msg));
+    //         // timestamp correct for rs16
+    //         if (preprocess_->GetLidarType()==LidarType::RS16){
+    //             double timeOffSet = 0;
+    //             unsigned char tmp[8];
+    //             for(int i=0;i<8;i++){
+    //                 tmp[i] = changeMsg->data[18+i];
+    //             }
+    //             timeOffSet = *(double*)tmp;
+    //             // LOG(WARNING) << "timeOffSet:" << std::to_string(timeOffSet);
+    //             // LOG(WARNING) << "time-0.1:" << std::to_string(changeMsg->header.stamp.toSec()-0.1);
+    //             changeMsg->header.stamp.fromSec(timeOffSet);
+    //         }
+            
+
+    //         preprocess_->Process(changeMsg, ptr);
+    //         lidar_buffer_.push_back(ptr);
+    //         time_buffer_.push_back(changeMsg->header.stamp.toSec());
+    //         while (lidar_buffer_.size()>100){
+    //             lidar_buffer_.pop_front();
+    //         }
+    //         while (time_buffer_.size()>100){
+    //             time_buffer_.pop_front();
+    //         }
+    //         last_timestamp_lidar_ = changeMsg->header.stamp.toSec();
+    //     },
+    //     "Preprocess (Standard)");
+    mtx_buffer_.unlock();
 }
 
 void LaserMapping::IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg){
-    LOG_FIRST_N(INFO,10) << "get imu topic";
+    mtx_buffer_.lock();
+    imu_buffer_.emplace_back(msg);
+    mtx_buffer_.unlock();
 }
 
 } // namespace fast_lio

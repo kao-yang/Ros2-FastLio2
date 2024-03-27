@@ -22,7 +22,7 @@
 #include <pcl/filters/conditional_removal.h>
 
 // #include "imu_processing.hpp"
-// #include "options.h"
+#include "options.h"
 // #include "pointcloud_preprocess.h"
 // #include "ikd-Tree/ikd_Tree.h"
 
@@ -83,6 +83,11 @@ private:
     ::rclcpp::Node::SharedPtr node_handler_;
     std::string lidar_topic_;
     std::string imu_topic_;
+    // sensor deque
+    std::mutex mtx_buffer_;
+    std::deque<double> time_buffer_;
+    std::deque<sensor_msgs::msg::PointCloud2> lidar_buffer_;
+    std::deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer_;
 
     /// modules
     // std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
@@ -132,10 +137,7 @@ private:
     // ros::Timer mTimer;
 
 
-    std::mutex mtx_buffer_;
-    std::deque<double> time_buffer_;
-    // std::deque<PointCloudType::Ptr> lidar_buffer_;
-    // std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_;
+
     // nav_msgs::Odometry odom_aft_mapped_;
 
     /// options
