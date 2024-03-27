@@ -41,19 +41,17 @@ class LaserMapping : public rclcpp::Node {
     /// init without ros
     bool InitWithoutROS(const std::string &config_yaml);
 
-    void FovSegment();
 
-    void Run();
 
     // callbacks of lidar and imu
     void StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
     void IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg);
 
     // sync lidar with imu
+    void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data){}
     bool SyncPackages();
-
-    /// interface of mtk, customized obseravtion model
-    // void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
+    void FovSegment();
+    void Run();
 
     ////////////////////////////// debug save / show ////////////////////////////////////////////////////////////////
     // void PublishOdometry(const ros::Publisher &pub_odom_aft_mapped);
@@ -92,8 +90,8 @@ private:
     std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
     std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
     // std::shared_ptr<KD_TREE<PointType>> ikdtree_ = nullptr;       // ikdtree
-    common::MeasureGroup measures_;                    // sync IMU and lidar scan
-    
+    esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;  // esekf
+
     /// local map related
     float det_range_ = 150.0f;
     double cube_len_ = 0;
@@ -107,11 +105,17 @@ private:
     bool extrinsic_est_en_ = true;
 
     // sync sensor deque
+    common::MeasureGroup measures_;                    // sync IMU and lidar scan
     bool lidar_pushed_ = false;
     double last_timestamp_imu_ = -1.0;
 
+    // IEKF state
+    state_ikfom state_point_;                          // ekf current state
+    vect3 pos_lidar_;                                  // lidar position after eskf update
+    common::V3D euler_cur_ = common::V3D::Zero();      // rotation in euler angles
+
     /// point clouds data
-    // CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
+    CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
     // CloudPtr scan_down_body_{new PointCloudType()};   // downsampled scan in body
     // CloudPtr scan_down_world_{new PointCloudType()};  // downsampled scan in world
     // CloudPtr scan_wout_ground_{new PointCloudType()}; // 非地面点，未降采样，body系
@@ -164,13 +168,6 @@ private:
     int scan_num_ = 0;  // get lidar scan num in SyncPackages()， to get mean lidar scan time
     bool timediff_set_flg_ = false;
     int effect_feat_num_ = 0, frame_num_ = 0; // frame_num: successed frame in run
-
-    ///////////////////////// EKF inputs and output ///////////////////////////////////////////////////////
-    
-    // esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;  // esekf
-    // state_ikfom state_point_;                          // ekf current state
-    // vect3 pos_lidar_;                                  // lidar position after eskf update
-    // common::V3D euler_cur_ = common::V3D::Zero();      // rotation in euler angles
     
 
     /////////////////////////  debug show / save /////////////////////////////////////////////////////////
