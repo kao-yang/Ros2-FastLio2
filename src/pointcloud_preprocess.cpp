@@ -175,7 +175,7 @@ void PointCloudPreprocess::Rs16Handler(const sensor_msgs::msg::PointCloud2::Cons
         added_pt.intensity = pl_orig.points[i].intensity;
         // LOG(INFO) << "orin:"<< std::to_string( pl_orig.points[i].timestamp); // TODO
         added_pt.curvature = ( pl_orig.points[i].timestamp - 
-                (msg->header.stamp.sec + msg->header.stamp.nanosec / 1000000000.f) ) * time_scale_;  // ms
+                fast_lio::common::FromRosTime(msg->header.stamp) ) * time_scale_;  // ms
         // LOG(INFO) << "change:" << std::to_string( added_pt.curvature); // TODO
 
 

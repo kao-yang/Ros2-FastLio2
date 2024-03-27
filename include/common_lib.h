@@ -248,5 +248,17 @@ inline bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &po
     }
     return true;
 }
+inline double FromRosTime(const builtin_interfaces::msg::Time& time){
+    return time.sec + static_cast<double>(time.nanosec) / 1000000000.f;
+}
+
+inline builtin_interfaces::msg::Time ToRosTime(const double& time){
+    builtin_interfaces::msg::Time stamp;
+    int32_t sec = static_cast<int32_t>(time);
+    int32_t nanosec = static_cast<int32_t>( (time - sec) * 1000000000 );
+    stamp.sec = sec;
+    stamp.nanosec = nanosec;
+    return stamp;
+}
 
 }  // namespace fast_lio::common
