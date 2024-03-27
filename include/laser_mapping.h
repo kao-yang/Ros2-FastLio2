@@ -38,28 +38,19 @@ class LaserMapping : public rclcpp::Node {
         LOG(INFO) << "laser mapping deconstruct";
     }
 
-    /// init without ros
-    bool InitWithoutROS(const std::string &config_yaml);
-
-
-
     // callbacks of lidar and imu
     void StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
     void IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg);
+    void PublishOdometry();
 
     // sync lidar with imu
-    void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data){}
+    void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
     bool SyncPackages();
     void FovSegment();
     void Run();
 
-    ////////////////////////////// debug save / show ////////////////////////////////////////////////////////////////
-    // void PublishOdometry(const ros::Publisher &pub_odom_aft_mapped);
-    void Finish();
-
    private:
-    template <typename T>
-    void SetPosestamp(T &out);
+
 
     // tools
     void PointBodyToWorld(PointType const *pi, PointType *const po);
@@ -67,8 +58,6 @@ class LaserMapping : public rclcpp::Node {
     // void PointBodyLidarToIMU(PointType const *const pi, PointType *const po);
 
     void MapIncremental();
-
-    // void SubAndPubToROS(ros::NodeHandle &nh);
 
     bool LoadParamsFromYAML(const std::string &yaml);
 
@@ -121,7 +110,6 @@ private:
     common::VV4F corr_pts_;                           // inlier pts
     common::VV4F corr_norm_;                          // inlier plane norms
     pcl::VoxelGrid<PointType> voxel_scan_;            // voxel filter for current scan
-    // pcl::VoxelGrid<PointType> voxel_map_;             // 地图点云体素滤波器
     std::vector<float> residuals_;                    // point-to-plane residuals
     std::vector<bool> point_selected_surf_;           // selected points
     common::VV4F plane_coef_;                         // plane coeffs
@@ -130,21 +118,7 @@ private:
     /// ros pub and sub stuffs
     ::rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
     ::rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_;
-    // ros::Subscriber mSubInitPose;
-    // ros::Publisher pub_laser_cloud_world_;
-    // ros::Publisher pub_laser_cloud_body_;
-    // ros::Publisher pub_laser_cloud_effect_world_;
-    // ros::Publisher pub_odom_aft_mapped_;
-    // ros::Publisher pub_path_;
-    // ros::Publisher pub_map_;
-    // ros::Publisher pub_scan_;
-    // ros::Publisher pub_wout_ground_;
-    // ros::Publisher mPubPcdCloudMap;
-    // ros::Timer mTimer;
-
-
-
-    // nav_msgs::Odometry odom_aft_mapped_;
+    ::rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
 
     /// options
     bool time_sync_en_ = false;
