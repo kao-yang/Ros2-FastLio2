@@ -103,7 +103,7 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         return false;
     }
 
-    // voxel_scan_.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
+    voxel_scan_.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
     // voxel_map_.setLeafSize(0.1, 0.1, 0.1);
 
     lidar_T_wrt_IMU = common::VecFromArray<double>(extrinT_);
@@ -305,8 +305,23 @@ void LaserMapping::Run(){
             FovSegment();
         },
         "Fov Segment");
-    LOG(INFO) << "bbx: " << localmap_box_.vertex_min[0] << " " << localmap_box_.vertex_min[1] << " " << localmap_box_.vertex_min[2]
-        << " " << localmap_box_.vertex_max[0] << " " << localmap_box_.vertex_max[1] << " " << localmap_box_.vertex_max[2];
+    // LOG(INFO) << "bbx: " << localmap_box_.vertex_min[0] << " " << localmap_box_.vertex_min[1] << " " << localmap_box_.vertex_min[2]
+        // << " " << localmap_box_.vertex_max[0] << " " << localmap_box_.vertex_max[1] << " " << localmap_box_.vertex_max[2];
+
+    // Step 4. downsample cur body frame lidar scan 
+    Timer::Evaluate(
+        [&, this]() {
+            voxel_scan_.setInputCloud(scan_undistort_); // scan_undistort_
+            voxel_scan_.filter(*scan_down_body_);
+        },
+        "Downsample PointCloud");
+    int cur_pts = scan_down_body_->size();
+    LOG(INFO) << "lidar size after ds: " << cur_pts;
+    if (cur_pts < 5) {
+        LOG(WARNING) << "Too few points, skip this scan!" << scan_undistort_->size() << ", " << scan_down_body_->size();
+        return;
+    }
+
 }
 
 } // namespace fast_lio
