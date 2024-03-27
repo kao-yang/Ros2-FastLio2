@@ -10,6 +10,7 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
     // Step 1.init ptr
     preprocess_.reset( new PointCloudPreprocess() );
     p_imu_.reset( new ImuProcess() );
+    ikdtree_.reset( new KD_TREE<PointType>() );
 
     // Step 2.load params
     if ( !LoadParamsFromYAML( sParamsDir+ "ikdodom.yaml") ){
@@ -231,7 +232,15 @@ void LaserMapping::Run(){
     pos_lidar_ = state_point_.pos + state_point_.rot * state_point_.offset_T_L_I;
     LOG(INFO) << "time: "<< std::to_string(measures_.lidar_end_time_);
     LOG(WARNING) << "imu pos: " << state_point_.pos.transpose();
-    
+
+    // Step 3. segment ikd tree fov
+    Timer::Evaluate(
+        [&, this]() {
+            FovSegment();
+        },
+        "Fov Segment");
+    LOG(INFO) << "bbx: " << localmap_box_.vertex_min[0] << " " << localmap_box_.vertex_min[1] << " " << localmap_box_.vertex_min[2]
+        << " " << localmap_box_.vertex_max[0] << " " << localmap_box_.vertex_max[1] << " " << localmap_box_.vertex_max[2];
 }
 
 } // namespace fast_lio
