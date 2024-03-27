@@ -26,6 +26,8 @@
 // #include "pointcloud_preprocess.h"
 // #include "ikd-Tree/ikd_Tree.h"
 
+using std::placeholders::_1;
+
 namespace fast_lio {
 
 class LaserMapping : public rclcpp::Node {
@@ -115,8 +117,8 @@ private:
     // common::VV4F plane_coef_;                         // plane coeffs
 
     /// ros pub and sub stuffs
-    ::rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_pcl_;
-    ::rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_imu_;
+    ::rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
+    ::rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_;
     // ros::Subscriber mSubInitPose;
     // ros::Publisher pub_laser_cloud_world_;
     // ros::Publisher pub_laser_cloud_body_;

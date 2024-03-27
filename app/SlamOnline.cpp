@@ -38,9 +38,12 @@ int main(int argc, char * argv[])
     LOG(INFO) << "config dir from gflag: " << sConfigParamDir;
 
     // Step 3. init slam
-    ::fast_lio::LaserMapping slam(sConfigParamDir);
+    auto slam = std::make_shared<::fast_lio::LaserMapping>(sConfigParamDir);
 
-    // Step 4. shut down
+    // Step 4. spin
+    rclcpp::spin(slam);
+
+    // Step 5.shut down
     rclcpp::shutdown();
 
     return 0;
