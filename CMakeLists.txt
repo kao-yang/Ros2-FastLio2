@@ -22,7 +22,7 @@ endif ()
 
 include(cmake/packages.cmake)
 
-# add_subdirectory(src)
+add_subdirectory(src)
 add_subdirectory(app)
 # add_subdirectory(test)
 
