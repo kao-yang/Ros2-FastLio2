@@ -6,10 +6,8 @@ add_executable(
 
 target_link_libraries(
   slam_online
-  glog 
   gflags
-  yaml-cpp
-  ${PCL_LIBRARIES}
+  ${PROJECT_NAME}
   )
 
 ament_target_dependencies(
