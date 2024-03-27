@@ -86,11 +86,11 @@ private:
     // sensor deque
     std::mutex mtx_buffer_;
     std::deque<double> time_buffer_;
-    std::deque<sensor_msgs::msg::PointCloud2::ConstSharedPtr> lidar_buffer_;
+    std::deque<PointCloudType::Ptr> lidar_buffer_;
     std::deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer_;
 
     /// modules
-    // std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
+    std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
     // std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
     // std::shared_ptr<KD_TREE<PointType>> ikdtree_ = nullptr;       // ikdtree
 
