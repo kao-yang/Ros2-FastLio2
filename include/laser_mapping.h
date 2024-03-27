@@ -50,7 +50,7 @@ class LaserMapping : public rclcpp::Node {
     // sync lidar with imu
     void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data){}
     bool SyncPackages();
-    void FovSegment(){}
+    void FovSegment();
     void Run();
 
     ////////////////////////////// debug save / show ////////////////////////////////////////////////////////////////
