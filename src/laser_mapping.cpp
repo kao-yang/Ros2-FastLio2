@@ -17,6 +17,12 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
         LOG(INFO) << "load param success";
     }
 
+    // Step 3. sub
+    sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
+        imu_topic_, 10, std::bind(&LaserMapping::IMUCallBack, this, _1));
+    sub_pcl_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+        lidar_topic_, 10, std::bind(&LaserMapping::StandardPCLCallBack, this, _1));
+
 }
 
 bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
@@ -116,5 +122,14 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
     return true;
 }
 
+
+
+void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg){
+    LOG_FIRST_N(INFO,10) << "get lidar topic";
+}
+
+void LaserMapping::IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg){
+    LOG_FIRST_N(INFO,10) << "get imu topic";
+}
 
 } // namespace fast_lio
