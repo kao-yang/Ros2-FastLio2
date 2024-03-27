@@ -67,48 +67,48 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(rs16_ros::Point,
                                       (std::uint16_t, ring, ring)(double, timestamp, timestamp))
 // clang-format on
 
-// namespace fast_lio {
+namespace fast_lio {
 
-// enum class LidarType { VELO16, OUST64, RS16 };
+enum class LidarType { VELO16, OUST64, RS16 };
 
-// /**
-//  * point cloud preprocess
-//  * just unify the point format from livox/velodyne to PCL
-//  */
-// class PointCloudPreprocess {
-//    public:
-//     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+/**
+ * point cloud preprocess
+ * just unify the point format from livox/velodyne to PCL
+ */
+class PointCloudPreprocess {
+   public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-//     PointCloudPreprocess() = default;
-//     ~PointCloudPreprocess() = default;
+    PointCloudPreprocess() = default;
+    ~PointCloudPreprocess() = default;
 
-//     /// processors
-//     void Process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudType::Ptr &pcl_out);
-//     void Set(LidarType lid_type, double bld, int pfilt_num);
+    /// processors
+    void Process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, PointCloudType::Ptr &pcl_out);
+    void Set(LidarType lid_type, double bld, int pfilt_num);
 
-//     // accessors
-//     double &Blind() { return blind_; }
-//     int &NumScans() { return num_scans_; }
-//     int &PointFilterNum() { return point_filter_num_; }
-//     bool &FeatureEnabled() { return feature_enabled_; }
-//     double &TimeScale() { return time_scale_; }
-//     LidarType GetLidarType() const { return lidar_type_; }
-//     void SetLidarType(LidarType lt) { lidar_type_ = lt; }
+    // accessors
+    double &Blind() { return blind_; }
+    int &NumScans() { return num_scans_; }
+    int &PointFilterNum() { return point_filter_num_; }
+    bool &FeatureEnabled() { return feature_enabled_; }
+    double &TimeScale() { return time_scale_; }
+    LidarType GetLidarType() const { return lidar_type_; }
+    void SetLidarType(LidarType lt) { lidar_type_ = lt; }
 
-//    private:
-//     void Oust64Handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-//     void VelodyneHandler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-//     void Rs16Handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+   private:
+    void Oust64Handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+    void VelodyneHandler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+    void Rs16Handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
 
-//     PointCloudType cloud_full_, cloud_out_;
+    PointCloudType cloud_full_, cloud_out_;
 
-//     LidarType lidar_type_ = LidarType::VELO16;
-//     bool feature_enabled_ = false;
-//     int point_filter_num_ = 1;
-//     int num_scans_ = 16;
-//     double blind_ = 0.01;
-//     double time_scale_ = 1e-3;
-//     bool given_offset_time_ = true;
+    LidarType lidar_type_ = LidarType::VELO16;
+    bool feature_enabled_ = false;
+    int point_filter_num_ = 1;
+    int num_scans_ = 16;
+    double blind_ = 0.01;
+    double time_scale_ = 1e-3;
+    bool given_offset_time_ = true;
     
-// };
-// }  // namespace fast_lio
+};
+}  // namespace fast_lio
