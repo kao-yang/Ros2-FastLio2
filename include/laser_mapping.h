@@ -37,6 +37,7 @@ class LaserMapping : public rclcpp::Node {
         fast_lio::Timer::PrintAll();
         LOG(INFO) << "laser mapping deconstruct";
     }
+    bool LoadParamsFromYAML(const std::string &yaml);
 
     // callbacks of lidar and imu
     void StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
@@ -47,6 +48,7 @@ class LaserMapping : public rclcpp::Node {
     void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
     bool SyncPackages();
     void FovSegment();
+    void MapIncremental();
     void Run();
 
    private:
@@ -56,12 +58,6 @@ class LaserMapping : public rclcpp::Node {
     void PointBodyToWorld(PointType const *pi, PointType *const po);
     void PointBodyToWorld(const common::V3F &pi, PointType *const po);
     // void PointBodyLidarToIMU(PointType const *const pi, PointType *const po);
-
-    void MapIncremental();
-
-    bool LoadParamsFromYAML(const std::string &yaml);
-
-
     // void PrintState(const state_ikfom &s);
 
 private:
@@ -154,11 +150,6 @@ private:
     int pcd_save_interval_ = -1;
     bool path_save_en_ = false;
     std::string dataset_;
-
-    // PointCloudType::Ptr pcl_wait_save_{new PointCloudType()};  // debug save
-    // nav_msgs::Path path_;
-    // geometry_msgs::PoseStamped msg_body_pose_;
-    // std::deque<std::vector<double>> mdExtrinsic;
 
 };
 
