@@ -18,6 +18,14 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
         LOG(INFO) << "load param success";
     }
 
+    // Step 3. init iekf
+    std::vector<double> epsi(23, 0.001);
+    kf_.init_dyn_share(
+        get_f, df_dx, df_dw,
+        // 等价于fastlio的h_share_model
+        [this](state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) { ObsModel(s, ekfom_data); },
+        options::NUM_MAX_ITERATIONS, epsi.data());
+
     // Step 3. sub
     sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
         imu_topic_, 10, std::bind(&LaserMapping::IMUCallBack, this, std::placeholders::_1));
@@ -208,11 +216,22 @@ bool LaserMapping::SyncPackages(){
 }
 
 void LaserMapping::Run(){
+    // Step 1. sync sensor deque
     if (!SyncPackages()) {
         return;
     }
-    LOG(INFO) << "sync success, lidar time: " << std::to_string( measures_.lidar_end_time_ )
-                << " imu size: " << measures_.imu_.size();
+    
+    // Step 2.IMU process, kf prediction, get undistortion lidar points in tail lidar_body frame
+    p_imu_->Process(measures_, kf_, scan_undistort_);
+    if (scan_undistort_->empty() || (scan_undistort_ == nullptr)) {
+        LOG(WARNING) << "No point, skip this scan!";
+        return;
+    }
+    state_point_ = kf_.get_x();
+    pos_lidar_ = state_point_.pos + state_point_.rot * state_point_.offset_T_L_I;
+    LOG(INFO) << "time: "<< std::to_string(measures_.lidar_end_time_);
+    LOG(WARNING) << "imu pos: " << state_point_.pos.transpose();
+    
 }
 
 } // namespace fast_lio
