@@ -8,3 +8,10 @@ target_link_libraries(${PROJECT_NAME}
     tbb
     ${PCL_LIBRARIES}
 )
+ament_target_dependencies(
+    ${PROJECT_NAME}
+    rclcpp 
+    std_msgs 
+    sensor_msgs
+    nav_msgs
+)
