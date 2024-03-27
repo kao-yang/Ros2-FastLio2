@@ -23,11 +23,10 @@
 
 // #include "imu_processing.hpp"
 #include "options.h"
-#include "common_lib.h"
-// #include "pointcloud_preprocess.h"
+#include "pointcloud_preprocess.h"
 // #include "ikd-Tree/ikd_Tree.h"
 
-using std::placeholders::_1;
+// using std::placeholders::_1;
 
 namespace fast_lio {
 

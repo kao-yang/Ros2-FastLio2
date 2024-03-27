@@ -19,9 +19,9 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
 
     // Step 3. sub
     sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
-        imu_topic_, 10, std::bind(&LaserMapping::IMUCallBack, this, _1));
+        imu_topic_, 10, std::bind(&LaserMapping::IMUCallBack, this, std::placeholders::_1));
     sub_pcl_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        lidar_topic_, 10, std::bind(&LaserMapping::StandardPCLCallBack, this, _1));
+        lidar_topic_, 10, std::bind(&LaserMapping::StandardPCLCallBack, this, std::placeholders::_1));
 
 }
 
