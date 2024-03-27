@@ -81,6 +81,7 @@ private:
     ::rclcpp::Node::SharedPtr node_handler_;
     std::string lidar_topic_;
     std::string imu_topic_;
+
     // sensor deque
     std::mutex mtx_buffer_;
     std::deque<double> time_buffer_;
@@ -91,7 +92,8 @@ private:
     std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
     std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
     // std::shared_ptr<KD_TREE<PointType>> ikdtree_ = nullptr;       // ikdtree
-
+    common::MeasureGroup measures_;                    // sync IMU and lidar scan
+    
     /// local map related
     float det_range_ = 150.0f;
     double cube_len_ = 0;
@@ -103,6 +105,10 @@ private:
     std::vector<double> extrinT_{3, 0.0};  // lidar-imu translation
     std::vector<double> extrinR_{9, 0.0};  // lidar-imu rotation
     bool extrinsic_est_en_ = true;
+
+    // sync sensor deque
+    bool lidar_pushed_ = false;
+    double last_timestamp_imu_ = -1.0;
 
     /// point clouds data
     // CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
@@ -144,9 +150,9 @@ private:
     double timediff_lidar_wrt_imu_ = 0.0;
     double last_timestamp_lidar_ = 0;
     double lidar_end_time_ = 0;
-    double last_timestamp_imu_ = -1.0;
+    
     double first_lidar_time_ = 0.0;
-    bool lidar_pushed_ = false;
+    
 
     /// statistics and flags ///
     int scan_count_ = 0;
@@ -160,7 +166,7 @@ private:
     int effect_feat_num_ = 0, frame_num_ = 0; // frame_num: successed frame in run
 
     ///////////////////////// EKF inputs and output ///////////////////////////////////////////////////////
-    // common::MeasureGroup measures_;                    // sync IMU and lidar scan
+    
     // esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;  // esekf
     // state_ikfom state_point_;                          // ekf current state
     // vect3 pos_lidar_;                                  // lidar position after eskf update
