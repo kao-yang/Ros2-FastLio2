@@ -23,6 +23,7 @@
 
 // #include "imu_processing.hpp"
 #include "options.h"
+#include "common_lib.h"
 // #include "pointcloud_preprocess.h"
 // #include "ikd-Tree/ikd_Tree.h"
 
@@ -86,7 +87,7 @@ private:
     // sensor deque
     std::mutex mtx_buffer_;
     std::deque<double> time_buffer_;
-    std::deque<sensor_msgs::msg::PointCloud2> lidar_buffer_;
+    std::deque<sensor_msgs::msg::PointCloud2::ConstSharedPtr> lidar_buffer_;
     std::deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer_;
 
     /// modules
