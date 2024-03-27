@@ -23,7 +23,7 @@
 
 #include "imu_processing.h"
 #include "pointcloud_preprocess.h"
-// #include "ikd-Tree/ikd_Tree.h
+#include "ikd-Tree/ikd_Tree.h"
 
 namespace fast_lio {
 
@@ -50,7 +50,7 @@ class LaserMapping : public rclcpp::Node {
     // sync lidar with imu
     void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data){}
     bool SyncPackages();
-    void FovSegment();
+    void FovSegment(){}
     void Run();
 
     ////////////////////////////// debug save / show ////////////////////////////////////////////////////////////////
@@ -89,20 +89,16 @@ private:
     /// modules
     std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
     std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
-    // std::shared_ptr<KD_TREE<PointType>> ikdtree_ = nullptr;       // ikdtree
+    std::shared_ptr<KD_TREE<PointType>> ikdtree_ = nullptr;       // ikdtree
     esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;  // esekf
-
-    /// local map related
-    float det_range_ = 150.0f;
-    double cube_len_ = 0;
-    double filter_size_map_min_ = 0;
-    bool localmap_initialized_ = false;
-    // BoxPointType localmap_box_; 
 
     /// params
     std::vector<double> extrinT_{3, 0.0};  // lidar-imu translation
     std::vector<double> extrinR_{9, 0.0};  // lidar-imu rotation
     bool extrinsic_est_en_ = true;
+    float det_range_ = 150.0f;
+    double cube_len_ = 0;
+    double filter_size_map_min_ = 0;
 
     // sync sensor deque
     common::MeasureGroup measures_;                    // sync IMU and lidar scan
@@ -113,6 +109,8 @@ private:
     state_ikfom state_point_;                          // ekf current state
     vect3 pos_lidar_;                                  // lidar position after eskf update
     common::V3D euler_cur_ = common::V3D::Zero();      // rotation in euler angles
+    bool localmap_initialized_ = false;
+    BoxPointType localmap_box_; 
 
     /// point clouds data
     CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
