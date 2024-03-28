@@ -45,10 +45,10 @@ class LaserMapping : public rclcpp::Node {
     void PublishOdometry();
 
     // sync lidar with imu
-    void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
+    
     bool SyncPackages();
     void FovSegment();
-    void MapIncremental();
+    
     void Run();
 
    private:
@@ -181,6 +181,9 @@ private:
     std::shared_ptr<KD_TREE<PointType>> m_pIkdTree = nullptr;       // ikdtree
     esekfom::esekf<state_ikfom, 12, input_ikfom> m_kf;  // esekf
 
+public:
+    void MapIncremental();
+    void ObsModel(state_ikfom &ikfState, esekfom::dyn_share_datastruct<double> &ikfH);
 };
 
 }  // namespace fast_lio

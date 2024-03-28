@@ -189,62 +189,66 @@ void LaserMapping::PublishOdometry(){
  * @param s kf state
  * @param ekfom_data H matrix
  */
-void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-    int cnt_pts = m_pCloudDsInLidarBodyFrame->size();
-
-    std::vector<size_t> index(cnt_pts);
+void LaserMapping::ObsModel(state_ikfom &ikfState, esekfom::dyn_share_datastruct<double> &ikfH) {
+    // Step 0. get points size
+    size_t nPointsNum = m_pCloudDsInLidarBodyFrame->size();
+    std::vector<size_t> index(nPointsNum);
     for (size_t i = 0; i < index.size(); ++i) {
         index[i] = i;
     }
 
+
+    // Step 1. closest surface search and residual computation
     Timer::Evaluate(
         [&, this]() {
-            auto R_wl = (s.rot * s.offset_R_L_I).cast<float>();
-            auto t_wl = (s.rot * s.offset_T_L_I + s.pos).cast<float>();
+            // get R t from lidar body frame to map frame
+            auto rotLidarBodyToMap = (ikfState.rot * ikfState.offset_R_L_I).cast<float>();
+            auto transLidarBodyToMap = (ikfState.rot * ikfState.offset_T_L_I + ikfState.pos).cast<float>();
 
-            /** closest surface search and residual computation **/
-            // std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i) {
-            for(size_t i=0; i<cnt_pts; ++i){
-                PointType &point_body = m_pCloudDsInLidarBodyFrame->points[i];
-                PointType &point_world = m_pCloudDsInMapFrame->points[i];
+            // closest surface search and residual computation
+            // std::for_each(std::execution::seq, index.begin(), index.end(), [&](const size_t &i) {
+            for( size_t i=0; i<nPointsNum; ++i ){
+                PointType &pointLidarBodyFrame = m_pCloudDsInLidarBodyFrame->points[i];
+                PointType &pointMapFrame = m_pCloudDsInMapFrame->points[i];
 
-                /* transform to world frame */
-                common::V3F p_body = point_body.getVector3fMap();
-                point_world.getVector3fMap() = R_wl * p_body + t_wl;
-                point_world.intensity = point_body.intensity;
+                // transform to map frame
+                common::V3F pLidarBody = pointLidarBodyFrame.getVector3fMap();
+                pointMapFrame.getVector3fMap() = rotLidarBodyToMap * pLidarBody + transLidarBodyToMap;
+                pointMapFrame.intensity = pointLidarBodyFrame.intensity;
 
-                auto &points_near = m_vNearestPoints[i];
-                vector<float> pointSearchSqDis(options::NUM_MATCH_POINTS);
-                if (ekfom_data.converge) {
-                    /** Find the closest surfaces in the map **/
-                    m_pIkdTree->Nearest_Search(point_world, options::NUM_MATCH_POINTS, points_near, pointSearchSqDis);
-                    m_vPointSelectedSurf[i] = points_near.size() >= options::MIN_NUM_MATCH_POINTS;
+                auto &pointsNear = m_vNearestPoints[i];
+                vector<float> pointSearchSqDis(options::NUM_MATCH_POINTS);  // near points to be found
+                if (ikfH.converge) {
+                    // Find the closest surfaces in the map, filter outlier points // TODO
+                    m_pIkdTree->Nearest_Search(pointMapFrame, options::NUM_MATCH_POINTS, pointsNear, pointSearchSqDis);
+                    m_vPointSelectedSurf[i] = pointsNear.size() >= options::MIN_NUM_MATCH_POINTS;
                     if (m_vPointSelectedSurf[i]) {
                         m_vPointSelectedSurf[i] =
-                            common::esti_plane(m_planeCoef[i], points_near, options::ESTI_PLANE_THRESHOLD);
+                            common::esti_plane(m_planeCoef[i], pointsNear, options::ESTI_PLANE_THRESHOLD);
                     }
                 }
-
+                // compute residuals: point to plane distance
                 if (m_vPointSelectedSurf[i]) {
-                    auto temp = point_world.getVector4fMap();
+                    auto temp = pointMapFrame.getVector4fMap();
                     temp[3] = 1.0;
-                    float pd2 = m_planeCoef[i].dot(temp);
-
-                    bool valid_corr = p_body.norm() > 81 * pd2 * pd2;
-                    if (valid_corr) {
+                    float fDistancePointToPlane = m_planeCoef[i].dot(temp);  // the distance
+                    // more closer points, more shorter distance, 81 is empirical parameter
+                    bool bvalidCorr = pLidarBody.norm() > 81 * fDistancePointToPlane * fDistancePointToPlane;
+                    if (bvalidCorr) {
                         m_vPointSelectedSurf[i] = true;
-                        m_vResiduals[i] = pd2;
+                        m_vResiduals[i] = fDistancePointToPlane;
                     }
                 }
             }//);
         },
         "    ObsModel (Lidar Match)");
 
+    // Step 2. update measures(points to planes) before compute H matrix
     m_nEffectFeatureNum = 0;
 
-    m_effectFeaturePoints.resize(cnt_pts);
-    m_effectFeatureNormals.resize(cnt_pts);
-    for (int i = 0; i < cnt_pts; i++) {
+    m_effectFeaturePoints.resize(nPointsNum);
+    m_effectFeatureNormals.resize(nPointsNum);
+    for (size_t i = 0; i < nPointsNum; i++) {
         if (m_vPointSelectedSurf[i]) {
             m_effectFeatureNormals[m_nEffectFeatureNum] = m_planeCoef[i];
             m_effectFeaturePoints[m_nEffectFeatureNum] = m_pCloudDsInLidarBodyFrame->points[i].getVector4fMap();
@@ -257,48 +261,46 @@ void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double
     m_effectFeatureNormals.resize(m_nEffectFeatureNum);
 
     if (m_nEffectFeatureNum < 1) {
-        ekfom_data.valid = false;
+        ikfH.valid = false;
         LOG(WARNING) << "No Effective Points!";
         return;
     }
-    LOG(INFO) << "effect points num: " << m_nEffectFeatureNum;
+    // LOG(INFO) << "effect points num: " << m_nEffectFeatureNum;
+    // Step 3. Computation of Measurement Jacobian matrix H and measurements vector
     Timer::Evaluate(
         [&, this]() {
-            /*** Computation of Measurement Jacobian matrix H and measurements vector ***/
-            ekfom_data.h_x = Eigen::MatrixXd::Zero(m_nEffectFeatureNum, 12);  // 23
-            ekfom_data.h.resize(m_nEffectFeatureNum);
+            ikfH.h_x = Eigen::MatrixXd::Zero(m_nEffectFeatureNum, 12);  // ? m_nEffectFeatureNum*12
+            ikfH.h.resize(m_nEffectFeatureNum);
 
-            index.resize(m_nEffectFeatureNum);
-            const common::M3F off_R = s.offset_R_L_I.toRotationMatrix().cast<float>();
-            const common::V3F off_t = s.offset_T_L_I.cast<float>();
-            const common::M3F Rt = s.rot.toRotationMatrix().transpose().cast<float>();
+            const common::M3F offRotMatrix = ikfState.offset_R_L_I.toRotationMatrix().cast<float>();
+            const common::V3F offTrans = ikfState.offset_T_L_I.cast<float>();
+            const common::M3F rotMatrix = ikfState.rot.toRotationMatrix().transpose().cast<float>();
 
-            // std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i) {
-            for( size_t i=0; i<m_nEffectFeatureNum; ++i ){
-                common::V3F point_this_be = m_effectFeaturePoints[i].head<3>();
-                common::M3F point_be_crossmat = SKEW_SYM_MATRIX(point_this_be);
-                common::V3F point_this = off_R * point_this_be + off_t;
-                common::M3F point_crossmat = SKEW_SYM_MATRIX(point_this);
+            for(size_t i=0; i<m_nEffectFeatureNum; ++i){
+                common::V3F pointThisBe = m_effectFeaturePoints[i].head<3>();
+                common::M3F pointBeCrossmat = SKEW_SYM_MATRIX(pointThisBe);
+                common::V3F pointThis = offRotMatrix * pointThisBe + offTrans;
+                common::M3F pointCrossmat = SKEW_SYM_MATRIX(pointThis);
 
                 /*** get the normal vector of closest surface/corner ***/
-                common::V3F norm_vec = m_effectFeatureNormals[i].head<3>();
+                common::V3F normVec = m_effectFeatureNormals[i].head<3>();
 
                 /*** calculate the Measurement Jacobian matrix H ***/
-                common::V3F C(Rt * norm_vec);
-                common::V3F A(point_crossmat * C);
+                common::V3F C(rotMatrix * normVec);
+                common::V3F A(pointCrossmat * C);
 
                 if (m_bExtrinsicEstEn) {
-                    common::V3F B(point_be_crossmat * off_R.transpose() * C);
-                    ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec[0], norm_vec[1], norm_vec[2], A[0], A[1], A[2], B[0],
+                    common::V3F B(pointBeCrossmat * offRotMatrix.transpose() * C);
+                    ikfH.h_x.block<1, 12>(i, 0) << normVec[0], normVec[1], normVec[2], A[0], A[1], A[2], B[0],
                         B[1], B[2], C[0], C[1], C[2];
                 } else {
-                    ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec[0], norm_vec[1], norm_vec[2], A[0], A[1], A[2], 0.0,
+                    ikfH.h_x.block<1, 12>(i, 0) << normVec[0], normVec[1], normVec[2], A[0], A[1], A[2], 0.0,
                         0.0, 0.0, 0.0, 0.0, 0.0;
                 }
 
-                /*** Measurement: distance to the closest surface/corner ***/
-                ekfom_data.h(i) = -m_effectFeaturePoints[i][3];
-            }//);
+                // Measurement: distance to the closest surface
+                ikfH.h(i) = -m_effectFeaturePoints[i][3];
+            }
         },
         "    ObsModel (IEKF Build Jacobian)");
 }
@@ -435,7 +437,7 @@ void LaserMapping::MapIncremental() {
         if ( !m_vNearestPoints[i].empty() && m_bEkfInited ){
             // Step 3. get near point, compute distance of voxel center to near point 
             const PointVector &pointsNear = m_vNearestPoints[i]; // near points with this point
-            // get voxel center location of this point
+            // get voxel center location of this 
             Eigen::Vector3f center =
                 ((pointInMapFrame.getVector3fMap() / m_fFilterSizeMapMin).array().floor() + 0.5) * m_fFilterSizeMapMin;
             // distance between near point to voxel center
