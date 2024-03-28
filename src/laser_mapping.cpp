@@ -46,7 +46,7 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
     auto yaml = YAML::LoadFile(yaml_file);
     try {
         // // 常规参数
-        // time_sync_en_ = yaml["common"]["time_sync_en"].as<bool>();
+        // m_bTimeSyncEn = yaml["common"]["time_sync_en"].as<bool>();
         // mbLoadMapAndLoop = yaml["common"]["load_map_and_loop"].as<bool>();
         // mbUpdateMapAndLoop = yaml["common"]["update_map_and_loop"].as<bool>();
         lidar_topic_ = yaml["common"]["lidar_topic"].as<std::string>();
@@ -58,17 +58,17 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         preprocess_->TimeScale() = yaml["preprocess"]["time_scale"].as<double>();
         preprocess_->PointFilterNum() = yaml["preprocess"]["point_filter_num"].as<int>();
         // // 建图相关参数
-        cube_len_ = yaml["mapping"]["cube_side_length"].as<double>();
+        m_fCubeLen = yaml["mapping"]["cube_side_length"].as<double>();
         filter_size_surf_min = yaml["mapping"]["filter_size_surf"].as<double>();
-        filter_size_map_min_ = yaml["mapping"]["filter_size_map"].as<float>();
+        m_fFilterSizeMapMin = yaml["mapping"]["filter_size_map"].as<float>();
         options::NUM_MAX_ITERATIONS = yaml["mapping"]["max_iteration"].as<int>();
         options::ESTI_PLANE_THRESHOLD = yaml["mapping"]["esti_plane_threshold"].as<float>();
         acc_cov = yaml["mapping"]["acc_cov"].as<float>();
         gyr_cov = yaml["mapping"]["gyr_cov"].as<float>();
         b_acc_cov = yaml["mapping"]["b_acc_cov"].as<float>();
         b_gyr_cov = yaml["mapping"]["b_gyr_cov"].as<float>();
-        det_range_ = yaml["mapping"]["det_range"].as<float>();
-        extrinsic_est_en_ = yaml["mapping"]["extrinsic_est_en"].as<bool>();
+        m_fLidarDetectRange = yaml["mapping"]["det_range"].as<float>();
+        m_bExtrinsicEstEn = yaml["mapping"]["extrinsic_est_en"].as<bool>();
         extrinT_ = yaml["mapping"]["extrinsic_T"].as<std::vector<double>>();
         extrinR_ = yaml["mapping"]["extrinsic_R"].as<std::vector<double>>();
         // // 发布相关参数
@@ -103,7 +103,7 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
         return false;
     }
 
-    voxel_scan_.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
+    m_voxelScan.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
     // voxel_map_.setLeafSize(0.1, 0.1, 0.1);
 
     lidar_T_wrt_IMU = common::VecFromArray<double>(extrinT_);
@@ -157,12 +157,12 @@ void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::Cons
 void LaserMapping::IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg){
     mtx_buffer_.lock();
     auto timestamp = common::FromRosTime(msg->header.stamp);
-    if (timestamp < last_timestamp_imu_) {
+    if (timestamp < m_fLastImuTime) {
         LOG(WARNING) << "imu loop back, clear buffer";
         imu_buffer_.clear();
     }
 
-    last_timestamp_imu_ = timestamp;
+    m_fLastImuTime = timestamp;
     imu_buffer_.emplace_back(msg);
     mtx_buffer_.unlock();
     Run();
@@ -190,7 +190,7 @@ void LaserMapping::PublishOdometry(){
  * @param ekfom_data H matrix
  */
 void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-    int cnt_pts = scan_down_body_->size();
+    int cnt_pts = m_pCloudDsInLidarBodyFrame->size();
 
     std::vector<size_t> index(cnt_pts);
     for (size_t i = 0; i < index.size(); ++i) {
@@ -205,8 +205,8 @@ void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double
             /** closest surface search and residual computation **/
             // std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i) {
             for(size_t i=0; i<cnt_pts; ++i){
-                PointType &point_body = scan_down_body_->points[i];
-                PointType &point_world = scan_down_world_->points[i];
+                PointType &point_body = m_pCloudDsInLidarBodyFrame->points[i];
+                PointType &point_world = m_pCloudDsInMapFrame->points[i];
 
                 /* transform to world frame */
                 common::V3F p_body = point_body.getVector3fMap();
@@ -247,7 +247,7 @@ void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double
     for (int i = 0; i < cnt_pts; i++) {
         if (point_selected_surf_[i]) {
             corr_norm_[effect_feat_num_] = plane_coef_[i];
-            corr_pts_[effect_feat_num_] = scan_down_body_->points[i].getVector4fMap();
+            corr_pts_[effect_feat_num_] = m_pCloudDsInLidarBodyFrame->points[i].getVector4fMap();
             corr_pts_[effect_feat_num_][3] = residuals_[i];
 
             effect_feat_num_++;
@@ -287,7 +287,7 @@ void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double
                 common::V3F C(Rt * norm_vec);
                 common::V3F A(point_crossmat * C);
 
-                if (extrinsic_est_en_) {
+                if (m_bExtrinsicEstEn) {
                     common::V3F B(point_be_crossmat * off_R.transpose() * C);
                     ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec[0], norm_vec[1], norm_vec[2], A[0], A[1], A[2], B[0],
                         B[1], B[2], C[0], C[1], C[2];
@@ -310,7 +310,7 @@ bool LaserMapping::SyncPackages(){
     }
 
     /*** get new lidar scan ***/
-    if (!lidar_pushed_) {
+    if (!m_bLidarPushed) {
         measures_.lidar_ = lidar_buffer_.front();
         measures_.lidar_bag_time_ = time_buffer_.front();
 
@@ -328,10 +328,10 @@ bool LaserMapping::SyncPackages(){
 
         measures_.lidar_end_time_ = lidar_end_time_;
 
-        lidar_pushed_ = true;
+        m_bLidarPushed = true;
     }
 
-    if (last_timestamp_imu_ < lidar_end_time_) {
+    if (m_fLastImuTime < lidar_end_time_) {
         return false;
     }
 
@@ -347,7 +347,7 @@ bool LaserMapping::SyncPackages(){
 
     lidar_buffer_.pop_front();
     time_buffer_.pop_front();
-    lidar_pushed_ = false;
+    m_bLidarPushed = false;
     return true;
 }
 
@@ -359,12 +359,12 @@ void LaserMapping::FovSegment(){
     // step2.获得lidar在w系下的位姿
     vect3 pos_lid = pos_lidar_;
     // step3.初始化box
-    if(!flg_box_inited_){
+    if(!m_bBbxInited){
         for (int i = 0; i < 3; i++){
-            localmap_box_.vertex_min[i] = pos_lid(i) - cube_len_ / 2.0;
-            localmap_box_.vertex_max[i] = pos_lid(i) + cube_len_ / 2.0;
+            localmap_box_.vertex_min[i] = pos_lid(i) - m_fCubeLen / 2.0;
+            localmap_box_.vertex_max[i] = pos_lid(i) + m_fCubeLen / 2.0;
         }
-        flg_box_inited_ = true;
+        m_bBbxInited = true;
         return;
     }
     // step4. 求取距离和是否需要移动
@@ -373,8 +373,8 @@ void LaserMapping::FovSegment(){
     for (int i = 0; i < 3; i++){
         dist_to_map_edge[i][0] = fabs(pos_lid(i) - localmap_box_.vertex_min[i]);
         dist_to_map_edge[i][1] = fabs(pos_lid(i) - localmap_box_.vertex_max[i]);
-        if (dist_to_map_edge[i][0] <= options::MOV_THRESHOLD * det_range_ 
-           || dist_to_map_edge[i][1] <= options::MOV_THRESHOLD * det_range_)
+        if (dist_to_map_edge[i][0] <= options::MOV_THRESHOLD * m_fLidarDetectRange 
+           || dist_to_map_edge[i][1] <= options::MOV_THRESHOLD * m_fLidarDetectRange)
             need_move = true;
     }
     if (!need_move) return;
@@ -383,13 +383,13 @@ void LaserMapping::FovSegment(){
     BoxPointType New_LocalMap_Points, tmp_boxpoints_rm, tmp_boxpoints_add;  // 新的局部地图盒子边界点
     New_LocalMap_Points = localmap_box_;
     // step5.1 求取移动距离
-    float mov_dist = max((cube_len_ - 2.0 * options::MOV_THRESHOLD * det_range_) * 0.5 * 0.9, 
-                          double(det_range_ * (options::MOV_THRESHOLD -1)));
+    float mov_dist = max((m_fCubeLen - 2.0 * options::MOV_THRESHOLD * m_fLidarDetectRange) * 0.5 * 0.9, 
+                          double(m_fLidarDetectRange * (options::MOV_THRESHOLD -1)));
     // step5.2 求取待删除的矩形大小
     for (int i = 0; i < 3; i++){
         tmp_boxpoints_rm = localmap_box_;
         tmp_boxpoints_add = localmap_box_;
-        if (dist_to_map_edge[i][0] <= options::MOV_THRESHOLD * det_range_){
+        if (dist_to_map_edge[i][0] <= options::MOV_THRESHOLD * m_fLidarDetectRange){
             New_LocalMap_Points.vertex_max[i] -= mov_dist;
             New_LocalMap_Points.vertex_min[i] -= mov_dist;
             tmp_boxpoints_rm.vertex_min[i] = localmap_box_.vertex_max[i] - mov_dist;
@@ -397,7 +397,7 @@ void LaserMapping::FovSegment(){
             tmp_boxpoints_add.vertex_min[i] = New_LocalMap_Points.vertex_min[i];
             tmp_boxpoints_add.vertex_max[i] = localmap_box_.vertex_min[i];
             cub_needadd.push_back(tmp_boxpoints_add);
-        } else if (dist_to_map_edge[i][1] <= options::MOV_THRESHOLD * det_range_){
+        } else if (dist_to_map_edge[i][1] <= options::MOV_THRESHOLD * m_fLidarDetectRange){
             New_LocalMap_Points.vertex_max[i] += mov_dist;
             New_LocalMap_Points.vertex_min[i] += mov_dist;
             tmp_boxpoints_rm.vertex_max[i] = localmap_box_.vertex_min[i] + mov_dist;
@@ -421,7 +421,7 @@ void LaserMapping::MapIncremental() {
     PointVector points_to_add;
     PointVector point_no_need_downsample;
 
-    int cur_pts = scan_down_body_->size();
+    int cur_pts = m_pCloudDsInLidarBodyFrame->size();
     points_to_add.reserve(cur_pts);
     point_no_need_downsample.reserve(cur_pts);
 
@@ -432,21 +432,21 @@ void LaserMapping::MapIncremental() {
     // step1.遍历w系下雷达扫描点
     // std::for_each(std::execution::unseq, index.begin(), index.end(), [&](const size_t &i) {
     for( size_t i=0; i<cur_pts; ++i ){
-        PointBodyToWorld(&(scan_down_body_->points[i]), &(scan_down_world_->points[i]));
-        PointType &point_world = scan_down_world_->points[i];
+        PointBodyToWorld(&(m_pCloudDsInLidarBodyFrame->points[i]), &(m_pCloudDsInMapFrame->points[i]));
+        PointType &point_world = m_pCloudDsInMapFrame->points[i];
         // 判断地图上的邻近点不未空，且ekf初始化成功
-        if (!nearest_points_[i].empty() && flg_EKF_inited_) {
+        if (!nearest_points_[i].empty() && m_bEkfInited) {
             // step1.1 是
             const PointVector &points_near = nearest_points_[i];
             // step1.1.1 求该点所在地图栅格的中心坐标
             Eigen::Vector3f center =
-                ((point_world.getVector3fMap() / filter_size_map_min_).array().floor() + 0.5) * filter_size_map_min_;
+                ((point_world.getVector3fMap() / m_fFilterSizeMapMin).array().floor() + 0.5) * m_fFilterSizeMapMin;
             // step1.1.2 求该点的最近邻点距地图栅格的中心的距离
             Eigen::Vector3f dis_2_center = points_near[0].getVector3fMap() - center;
             // step1.1.3 根据最近邻点距离判断，该点位置不在对应栅格中，则压入point_no_need_downsample
-            if (fabs(dis_2_center.x()) > 0.5 * filter_size_map_min_ &&
-                fabs(dis_2_center.y()) > 0.5 * filter_size_map_min_ &&
-                fabs(dis_2_center.z()) > 0.5 * filter_size_map_min_) {
+            if (fabs(dis_2_center.x()) > 0.5 * m_fFilterSizeMapMin &&
+                fabs(dis_2_center.y()) > 0.5 * m_fFilterSizeMapMin &&
+                fabs(dis_2_center.z()) > 0.5 * m_fFilterSizeMapMin) {
                 point_no_need_downsample.emplace_back(point_world);
                 // return;
                 continue;
@@ -506,35 +506,35 @@ void LaserMapping::Run(){
     // Step 4. downsample cur body frame lidar scan 
     Timer::Evaluate(
         [&, this]() {
-            voxel_scan_.setInputCloud(scan_undistort_); // scan_undistort_
-            voxel_scan_.filter(*scan_down_body_);
+            m_voxelScan.setInputCloud(scan_undistort_); // scan_undistort_
+            m_voxelScan.filter(*m_pCloudDsInLidarBodyFrame);
         },
         "Downsample PointCloud");
-    int cur_pts = scan_down_body_->size();
+    int cur_pts = m_pCloudDsInLidarBodyFrame->size();
     if (cur_pts < 5) {
-        LOG(WARNING) << "Too few points, skip this scan!" << scan_undistort_->size() << ", " << scan_down_body_->size();
+        LOG(WARNING) << "Too few points, skip this scan!" << scan_undistort_->size() << ", " << m_pCloudDsInLidarBodyFrame->size();
         return;
     }
 
-    scan_down_world_->resize(cur_pts);
+    m_pCloudDsInMapFrame->resize(cur_pts);
     nearest_points_.resize(cur_pts);
     residuals_.resize(cur_pts, 0);
     point_selected_surf_.resize(cur_pts, true);
     plane_coef_.resize(cur_pts, common::V4F::Zero());
     // Step 5.the first scan,init
-    if (flg_first_scan_) {
+    if (m_bFirstScan) {
         if (ikdtree_->Root_Node == nullptr){
-            ikdtree_->set_downsample_param(filter_size_map_min_);
+            ikdtree_->set_downsample_param(m_fFilterSizeMapMin);
             for(int i = 0; i < cur_pts; i++)
-                PointBodyToWorld(&(scan_down_body_->points[i]), &(scan_down_world_->points[i]));
-            ikdtree_->Build(scan_down_world_->points);
+                PointBodyToWorld(&(m_pCloudDsInLidarBodyFrame->points[i]), &(m_pCloudDsInMapFrame->points[i]));
+            ikdtree_->Build(m_pCloudDsInMapFrame->points);
         }
 
-        first_lidar_time_ = measures_.lidar_bag_time_;
-        flg_first_scan_ = false;
+        m_fFirstLidarTime = measures_.lidar_bag_time_;
+        m_bFirstScan = false;
         return;
     }
-    flg_EKF_inited_ = (measures_.lidar_bag_time_ - first_lidar_time_) >= options::INIT_TIME;
+    m_bEkfInited = (measures_.lidar_bag_time_ - m_fFirstLidarTime) >= options::INIT_TIME;
 
     // Step 6.ICP and iterated Kalman filter update
     Timer::Evaluate(

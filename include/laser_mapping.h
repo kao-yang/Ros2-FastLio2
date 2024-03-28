@@ -81,15 +81,14 @@ private:
     /// params
     std::vector<double> extrinT_{3, 0.0};  // lidar-imu translation
     std::vector<double> extrinR_{9, 0.0};  // lidar-imu rotation
-    bool extrinsic_est_en_ = true;
-    float det_range_ = 150.0f;
-    double cube_len_ = 0;
-    double filter_size_map_min_ = 0;
+    
+    
+    
 
     // sync sensor deque
     common::MeasureGroup measures_;                    // sync IMU and lidar scan
-    bool lidar_pushed_ = false;
-    double last_timestamp_imu_ = -1.0;
+    
+    
 
     // IEKF state
     state_ikfom state_point_;                          // ekf current state
@@ -99,17 +98,15 @@ private:
     BoxPointType localmap_box_; 
 
     /// point clouds data
-    CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
-    CloudPtr scan_down_body_{new PointCloudType()};   // downsampled scan in body
-    CloudPtr scan_down_world_{new PointCloudType()};  // downsampled scan in world
+    
     std::vector<PointVector> nearest_points_;         // nearest points of current scan
     common::VV4F corr_pts_;                           // inlier pts
     common::VV4F corr_norm_;                          // inlier plane norms
-    pcl::VoxelGrid<PointType> voxel_scan_;            // voxel filter for current scan
+    
     std::vector<float> residuals_;                    // point-to-plane residuals
     std::vector<bool> point_selected_surf_;           // selected points
     common::VV4F plane_coef_;                         // plane coeffs
-    bool flg_EKF_inited_ = false;
+    
 
     /// ros pub and sub stuffs
     ::rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
@@ -117,19 +114,19 @@ private:
     ::rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
 
     /// options
-    bool time_sync_en_ = false;
-    bool flg_box_inited_ = false;
+    
+    
     double timediff_lidar_wrt_imu_ = 0.0;
     double last_timestamp_lidar_ = 0;
     double lidar_end_time_ = 0;
     
-    double first_lidar_time_ = 0.0;
+    
     
 
     /// statistics and flags ///
     int scan_count_ = 0;
     int publish_count_ = 0;
-    bool flg_first_scan_ = true;
+    
     
     int pcd_index_ = 0;
     double lidar_mean_scantime_ = 0.0;
@@ -151,6 +148,26 @@ private:
     bool path_save_en_ = false;
     std::string dataset_;
 
+///////////////////////////////////////////
+    double m_fCubeLen = 0;
+    double m_fFilterSizeMapMin = 0;
+    float m_fLidarDetectRange = 150.0f;
+    bool m_bExtrinsicEstEn = true;
+    bool m_bTimeSyncEn = false;
+
+    pcl::VoxelGrid<PointType> m_voxelScan;            // voxel filter for current scan
+
+    bool m_bLidarPushed = false;
+    double m_fLastImuTime = -1.0;
+
+    CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
+    CloudPtr m_pCloudDsInLidarBodyFrame{new PointCloudType()};   // downsampled scan in body
+    CloudPtr m_pCloudDsInMapFrame{new PointCloudType()};  // downsampled scan in world
+
+    bool m_bFirstScan = true;
+    bool m_bBbxInited = false;
+    bool m_bEkfInited = false;
+    double m_fFirstLidarTime = 0.0;
 };
 
 }  // namespace fast_lio
