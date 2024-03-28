@@ -3,6 +3,7 @@ add_library(${PROJECT_NAME}
     options.cpp
     pointcloud_preprocess.cpp
     utils.cpp
+    use-ikform.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
