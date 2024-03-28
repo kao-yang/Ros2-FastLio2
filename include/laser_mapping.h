@@ -28,7 +28,6 @@
 #include "humanoid_slam/sensor/ImuData.h"
 #include "humanoid_slam/sensor/TimedPointCloudData.h"
 #include "humanoid_slam/sensor/LidarOdomMeasureData.h"
-#include "humanoid_slam/HumanoidSlamInterface.h"
 #include "humanoid_slam/HumanoidSlamBuilder.h"
 #include "sophus/se3.hpp"
 
@@ -83,7 +82,7 @@ private:
     ::rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
     ::rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_;
     ::rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
-    std::unique_ptr<::humanoid_slam::HumanoidSlamInterface> m_slam;
+    std::unique_ptr<::humanoid_slam::lidar_odom::ikd_odom::IkdOdomBuilder> m_slam;
     
 
 public:

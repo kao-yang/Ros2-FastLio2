@@ -17,8 +17,8 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
         LOG(INFO) << "load param success";
     }
 
-    m_slam = std::make_unique<::humanoid_slam::HumanoidSlamBuilder>
-                            ( sParamsDir + "humanoid_slam.yaml" );
+    m_slam = std::make_unique<::humanoid_slam::lidar_odom::ikd_odom::IkdOdomBuilder>
+                            ( sParamsDir + "ikd_odom.yaml" );
 
     // Step 3. sub
     sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
@@ -46,14 +46,15 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
 void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg){
     mtx_buffer_.lock();
     auto cloudData = RsHoliesToTimedPointCloudData(msg);
-    m_slam->AddSensorData("/lidar", cloudData);
+    m_slam->InputData(cloudData);
     mtx_buffer_.unlock();
 }
 
 void LaserMapping::IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg){
     mtx_buffer_.lock();
     auto imuData = ToImuData(msg);
-    m_slam->AddSensorData("/imu", imuData);
+    m_slam->InputData(imuData);
+    m_slam->RunOdom();
     mtx_buffer_.unlock();
     
 }
