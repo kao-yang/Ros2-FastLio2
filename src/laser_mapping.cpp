@@ -152,6 +152,7 @@ void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::Cons
     //     },
     //     "Preprocess (Standard)");
     auto cloudData = RsHoliesToTimedPointCloudData(msg);
+    m_qLidarDeque.emplace_back( std::make_shared<::humanoid_slam::sensor::TimedPointCloudData>(cloudData) );
     lidar_buffer_.push_back(cloudData.pPointCloud);
     time_buffer_.push_back(cloudData.fBeginTime);
     last_timestamp_lidar_ = cloudData.fBeginTime;
@@ -170,6 +171,8 @@ void LaserMapping::IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg){
     m_fLastImuTime = timestamp;
     imu_buffer_.emplace_back(msg);
     mtx_buffer_.unlock();
+    auto imuData = ToImuData(msg);
+    m_qImuDeque.emplace_back( std::make_shared<::humanoid_slam::sensor::ImuData>(imuData) );
     Run();
 }
 
@@ -630,5 +633,14 @@ void LaserMapping::PointBodyToWorld(const common::V3F &pi, PointType *const po) 
     return ::humanoid_slam::sensor::TimedPointCloudData{ fBeginTime, fEndTime, pCloudOut };
 }
 
+::humanoid_slam::sensor::ImuData 
+        LaserMapping::ToImuData( const sensor_msgs::msg::Imu::ConstSharedPtr& pMsg ){
+    double fTime = ::fast_lio::common::FromRosTime( pMsg->header.stamp );
+    Eigen::Vector3d angVec = Eigen::Vector3d(pMsg->angular_velocity.x, pMsg->angular_velocity.y, 
+                                pMsg->angular_velocity.z);
+    Eigen::Vector3d linAcc = Eigen::Vector3d(pMsg->linear_acceleration.x, pMsg->linear_acceleration.y, 
+                                pMsg->linear_acceleration.z);
+    return ::humanoid_slam::sensor::ImuData{fTime, angVec, linAcc};
+}
 
 } // namespace fast_lio

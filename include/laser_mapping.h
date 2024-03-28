@@ -113,15 +113,6 @@ private:
      
 
     /// point clouds data
-    
-    
-    
-    
-    
-    
-    
-    
-    
 
     /// ros pub and sub stuffs
     ::rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
@@ -206,6 +197,11 @@ public:
         RsHoliesToTimedPointCloudData
         ( const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pMsg );
 
+    ::humanoid_slam::sensor::ImuData 
+        ToImuData( const sensor_msgs::msg::Imu::ConstSharedPtr& pMsg );
+    std::deque< std::shared_ptr<::humanoid_slam::sensor::TimedPointCloudData> > m_qLidarDeque;
+    std::deque< std::shared_ptr<::humanoid_slam::sensor::ImuData> > m_qImuDeque;
+    // bool SyncMeasure();
 };
 
 }  // namespace fast_lio
