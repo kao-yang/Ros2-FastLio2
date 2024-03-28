@@ -418,64 +418,63 @@ void LaserMapping::FovSegment(){
 }
 
 void LaserMapping::MapIncremental() {
-    PointVector points_to_add;
-    PointVector point_no_need_downsample;
+    // init points vector added to ikd tree
+    PointVector pointsToAdd;            // points directly to add
+    PointVector pointNoNeedDownsample;  // points to add, but no need downsample
+    size_t nPointsNum = m_pCloudDsInLidarBodyFrame->size();
+    pointsToAdd.reserve(nPointsNum);
+    pointNoNeedDownsample.reserve(nPointsNum);
 
-    int cur_pts = m_pCloudDsInLidarBodyFrame->size();
-    points_to_add.reserve(cur_pts);
-    point_no_need_downsample.reserve(cur_pts);
-
-    std::vector<size_t> index(cur_pts);
-    for (size_t i = 0; i < cur_pts; ++i) {
-        index[i] = i;
-    }
-    // step1.遍历w系下雷达扫描点
-    // std::for_each(std::execution::unseq, index.begin(), index.end(), [&](const size_t &i) {
-    for( size_t i=0; i<cur_pts; ++i ){
+    // multi parallel go through all cur points
+    // #pragma omp parallel for num_threads(MP_PROC_NUM)
+    for(size_t i=0; i<nPointsNum; ++i){
+        // Step 1. transform points to map frame
         PointBodyToWorld(&(m_pCloudDsInLidarBodyFrame->points[i]), &(m_pCloudDsInMapFrame->points[i]));
-        PointType &point_world = m_pCloudDsInMapFrame->points[i];
-        // 判断地图上的邻近点不未空，且ekf初始化成功
-        if (!m_vNearestPoints[i].empty() && m_bEkfInited) {
-            // step1.1 是
-            const PointVector &points_near = m_vNearestPoints[i];
-            // step1.1.1 求该点所在地图栅格的中心坐标
+        PointType &pointInMapFrame = m_pCloudDsInMapFrame->points[i];
+        // 
+        if ( !m_vNearestPoints[i].empty() && m_bEkfInited ){
+            // Step 3. get near point, compute distance of voxel center to near point 
+            const PointVector &pointsNear = m_vNearestPoints[i]; // near points with this point
+            // get voxel center location of this point
             Eigen::Vector3f center =
-                ((point_world.getVector3fMap() / m_fFilterSizeMapMin).array().floor() + 0.5) * m_fFilterSizeMapMin;
-            // step1.1.2 求该点的最近邻点距地图栅格的中心的距离
-            Eigen::Vector3f dis_2_center = points_near[0].getVector3fMap() - center;
-            // step1.1.3 根据最近邻点距离判断，该点位置不在对应栅格中，则压入point_no_need_downsample
-            if (fabs(dis_2_center.x()) > 0.5 * m_fFilterSizeMapMin &&
-                fabs(dis_2_center.y()) > 0.5 * m_fFilterSizeMapMin &&
-                fabs(dis_2_center.z()) > 0.5 * m_fFilterSizeMapMin) {
-                point_no_need_downsample.emplace_back(point_world);
+                ((pointInMapFrame.getVector3fMap() / m_fFilterSizeMapMin).array().floor() + 0.5) * m_fFilterSizeMapMin;
+            // distance between near point to voxel center
+            Eigen::Vector3f disToCenter = pointsNear[0].getVector3fMap() - center;
+            // Step 4. near points far from center
+            // means this voxel is empty, so directly add this points to voxel
+            // no need down sampling
+            if (fabs(disToCenter.x()) > 0.5 * m_fFilterSizeMapMin &&
+                fabs(disToCenter.y()) > 0.5 * m_fFilterSizeMapMin &&
+                fabs(disToCenter.z()) > 0.5 * m_fFilterSizeMapMin) {
+                pointNoNeedDownsample.emplace_back(pointInMapFrame);
                 // return;
                 continue;
-                // TODO
             }
-            // step1.1.4 求该点与栅格中心的欧式距离
-            bool need_add = true;
-            float dist = common::calc_dist(point_world.getVector3fMap(), center);
-            // step1.1.5 如果该点的最近邻点数量>5,遍历邻近点，如果邻近点与栅格中心距离小于该点距离，则不添加(只需要里中心最近的点)
-            if (points_near.size() >= options::NUM_MATCH_POINTS) {
+            // Step 5.if this point is far, and the near points num are enough, not add 
+            // else, add this point, and down sampling
+            bool bNeedAdd = true;
+            float dist = common::calc_dist(pointInMapFrame.getVector3fMap(), center);
+            if (pointsNear.size() >= options::NUM_MATCH_POINTS) {
                 for (int readd_i = 0; readd_i < options::NUM_MATCH_POINTS; readd_i++) {
-                    if (common::calc_dist(points_near[readd_i].getVector3fMap(), center) < dist + 1e-6) {
-                        need_add = false;
+                    if (common::calc_dist(pointsNear[readd_i].getVector3fMap(), center) < dist + 1e-6) {
+                        bNeedAdd = false;
                         break;
                     }
                 }
             }
-            if (need_add) {
-                points_to_add.emplace_back(point_world);
+            if (bNeedAdd) {
+                pointsToAdd.emplace_back(pointInMapFrame);
             }
-        } else {// step1.1 否，即第一帧，则直接加入
-            points_to_add.emplace_back(point_world);
+        } else{
+            // Step 2. if no near points, directly add points
+            pointsToAdd.emplace_back(pointInMapFrame);
         }
-    }//);
+    }
 
-    int add_point_size = m_pIkdTree->Add_Points(points_to_add,true);
-    m_pIkdTree->Add_Points(point_no_need_downsample,false);
+    m_pIkdTree->Add_Points(pointsToAdd,true);
+    m_pIkdTree->Add_Points(pointNoNeedDownsample,false);
+
 }
-
 
 void LaserMapping::Run(){
     // Step 1. sync sensor deque
