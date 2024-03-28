@@ -25,6 +25,23 @@
 #include "pointcloud_preprocess.h"
 #include "ikd-Tree/ikd_Tree.h"
 
+#include "sensor/ImuData.h"
+#include "sensor/TimedPointCloudData.h"
+
+namespace rsHoliesRos {
+struct EIGEN_ALIGN16 Point {
+    PCL_ADD_POINT4D;
+    float intensity;
+    std::uint16_t ring;
+    double timestamp;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+}
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(rsHoliesRos::Point,
+    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)
+    (std::uint16_t, ring, ring)(double, timestamp, timestamp))
+
 namespace fast_lio {
 
 class LaserMapping : public rclcpp::Node {
@@ -184,6 +201,11 @@ private:
 public:
     void MapIncremental();
     void ObsModel(state_ikfom &ikfState, esekfom::dyn_share_datastruct<double> &ikfH);
+
+    ::humanoid_slam::sensor::TimedPointCloudData
+        RsHoliesToTimedPointCloudData
+        ( const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pMsg );
+
 };
 
 }  // namespace fast_lio

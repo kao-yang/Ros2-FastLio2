@@ -125,32 +125,37 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
 
 void LaserMapping::StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg){
     mtx_buffer_.lock();
-    Timer::Evaluate(
-        [&, this]() {
-            PointCloudType::Ptr ptr(new PointCloudType());
+    // Timer::Evaluate(
+    //     [&, this]() {
+    //         PointCloudType::Ptr ptr(new PointCloudType());
 
-            sensor_msgs::msg::PointCloud2::SharedPtr changeMsg (new sensor_msgs::msg::PointCloud2(*msg));
-            // timestamp correct for rs16
-            if (preprocess_->GetLidarType()==LidarType::RS16){
-                double timeOffSet = 0;
-                unsigned char tmp[8];
-                for(int i=0;i<8;i++){
-                    tmp[i] = changeMsg->data[18+i];
-                }
-                timeOffSet = *(double*)tmp;
-                changeMsg->header.stamp = fast_lio::common::ToRosTime(timeOffSet);
-            }
+    //         sensor_msgs::msg::PointCloud2::SharedPtr changeMsg (new sensor_msgs::msg::PointCloud2(*msg));
+    //         // timestamp correct for rs16
+    //         if (preprocess_->GetLidarType()==LidarType::RS16){
+    //             double timeOffSet = 0;
+    //             unsigned char tmp[8];
+    //             for(int i=0;i<8;i++){
+    //                 tmp[i] = changeMsg->data[18+i];
+    //             }
+    //             timeOffSet = *(double*)tmp;
+    //             changeMsg->header.stamp = fast_lio::common::ToRosTime(timeOffSet);
+    //         }
             
 
-            preprocess_->Process(changeMsg, ptr);
-            lidar_buffer_.push_back(ptr);
-            time_buffer_.push_back( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
-            // LOG(INFO) << "time buffer input, time: " << std::to_string( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
-            // LOG(INFO) << "lidar buffer input, size: " << ptr->points.size();
+    //         preprocess_->Process(changeMsg, ptr);
+    //         lidar_buffer_.push_back(ptr);
+    //         time_buffer_.push_back( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
+    //         // LOG(INFO) << "time buffer input, time: " << std::to_string( fast_lio::common::FromRosTime(changeMsg->header.stamp) );
+    //         // LOG(INFO) << "lidar buffer input, size: " << ptr->points.size();
 
-            last_timestamp_lidar_ = fast_lio::common::FromRosTime(changeMsg->header.stamp);
-        },
-        "Preprocess (Standard)");
+    //         last_timestamp_lidar_ = fast_lio::common::FromRosTime(changeMsg->header.stamp);
+    //     },
+    //     "Preprocess (Standard)");
+    auto cloudData = RsHoliesToTimedPointCloudData(msg);
+    lidar_buffer_.push_back(cloudData.pPointCloud);
+    time_buffer_.push_back(cloudData.fBeginTime);
+    last_timestamp_lidar_ = cloudData.fBeginTime;
+
     mtx_buffer_.unlock();
 }
 
@@ -580,5 +585,50 @@ void LaserMapping::PointBodyToWorld(const common::V3F &pi, PointType *const po) 
     po->z = p_global(2);
     po->intensity = std::abs(po->z);
 }
+
+
+::humanoid_slam::sensor::TimedPointCloudData
+        LaserMapping::RsHoliesToTimedPointCloudData
+        ( const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pMsg ){
+    // Step 1. get time
+    double fEndTime = ::fast_lio::common::FromRosTime( pMsg->header.stamp );
+
+    // Step 2. get origin cloud
+    pcl::PointCloud<rsHoliesRos::Point> originPointCloud;
+    pcl::fromROSMsg( *pMsg, originPointCloud );
+    double fBeginTime = originPointCloud.points[0].timestamp;
+    CHECK_GT(fBeginTime, 0);
+    CHECK_GT(fEndTime, fBeginTime);
+
+    // Step 3. filter blind, get aimed cloud
+    size_t nSize = originPointCloud.points.size();
+    CloudPtr pCloudOut( new PointCloudType );
+    pCloudOut->points.reserve( nSize );
+    size_t i = 0;
+    for( auto &it : originPointCloud.points ){
+        // Step 3.1 transform data type
+        PointType pointOut;
+        pointOut.normal_x = 0;
+        pointOut.normal_y = 0;
+        pointOut.normal_z = 0;
+        pointOut.x = it.x;
+        pointOut.y = it.y;
+        pointOut.z = it.z;
+        pointOut.intensity = it.intensity;
+        pointOut.curvature = (it.timestamp - fBeginTime)*1000.f;  // point time in wall time, unit:s
+    
+        // Step 3.2 downsampling cloud points
+        if ( i % 1 == 0 ){
+            // Step 3.3 filter blind
+            double fLen = sqrt( pointOut.x * pointOut.x + pointOut.y * pointOut.y + pointOut.z * pointOut.z );
+            if ( fLen >= 1.0 && fLen <= 100.0 ){
+                pCloudOut->points.emplace_back( pointOut );
+            }
+        }
+        i++;
+    }
+    return ::humanoid_slam::sensor::TimedPointCloudData{ fBeginTime, fEndTime, pCloudOut };
+}
+
 
 } // namespace fast_lio
