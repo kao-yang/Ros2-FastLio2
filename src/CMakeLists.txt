@@ -4,6 +4,7 @@ add_library(${PROJECT_NAME}
     pointcloud_preprocess.cpp
     utils.cpp
     use-ikform.cpp
+    ImuProcess.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}

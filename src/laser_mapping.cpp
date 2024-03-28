@@ -513,7 +513,8 @@ void LaserMapping::Run(){
 
     
     // Step 2.IMU process, kf prediction, get undistortion lidar points in tail lidar_body frame
-    m_pImu->Process(measures_, m_kf, scan_undistort_);
+    // m_pImu->Process(measures_, m_kf, scan_undistort_);
+    m_pImu->Process(m_measure, m_kf, scan_undistort_);
     if (scan_undistort_->empty() || (scan_undistort_ == nullptr)) {
         LOG(WARNING) << "No point, skip this scan!";
         return;
