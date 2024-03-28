@@ -9,8 +9,8 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
     node_handler_ = std::shared_ptr<::rclcpp::Node>(this, [](::rclcpp::Node *) {});
     // Step 1.init ptr
     preprocess_.reset( new PointCloudPreprocess() );
-    p_imu_.reset( new ImuProcess() );
-    ikdtree_.reset( new KD_TREE<PointType>() );
+    m_pImu.reset( new ImuProcess() );
+    m_pIkdTree.reset( new KD_TREE<PointType>() );
 
     // Step 2.load params
     if ( !LoadParamsFromYAML( sParamsDir+ "ikdodom.yaml") ){
@@ -21,7 +21,7 @@ LaserMapping::LaserMapping(const std::string& sParamsDir)
 
     // Step 3. init iekf
     std::vector<double> epsi(23, 0.001);
-    kf_.init_dyn_share(
+    m_kf.init_dyn_share(
         get_f, df_dx, df_dw,
         // 等价于fastlio的h_share_model
         [this](state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) { ObsModel(s, ekfom_data); },
@@ -109,11 +109,11 @@ bool LaserMapping::LoadParamsFromYAML(const std::string &yaml_file) {
     lidar_T_wrt_IMU = common::VecFromArray<double>(extrinT_);
     lidar_R_wrt_IMU = common::MatFromArray<double>(extrinR_);
 
-    p_imu_->SetExtrinsic(lidar_T_wrt_IMU, lidar_R_wrt_IMU);
-    p_imu_->SetGyrCov(common::V3D(gyr_cov, gyr_cov, gyr_cov));
-    p_imu_->SetAccCov(common::V3D(acc_cov, acc_cov, acc_cov));
-    p_imu_->SetGyrBiasCov(common::V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-    p_imu_->SetAccBiasCov(common::V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    m_pImu->SetExtrinsic(lidar_T_wrt_IMU, lidar_R_wrt_IMU);
+    m_pImu->SetGyrCov(common::V3D(gyr_cov, gyr_cov, gyr_cov));
+    m_pImu->SetAccCov(common::V3D(acc_cov, acc_cov, acc_cov));
+    m_pImu->SetGyrBiasCov(common::V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+    m_pImu->SetAccBiasCov(common::V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
     LOG(WARNING) << "extrin T: " << lidar_T_wrt_IMU.transpose();
     LOG(WARNING) << "extrin R: " << lidar_R_wrt_IMU.transpose();
@@ -172,13 +172,13 @@ void LaserMapping::PublishOdometry(){
     nav_msgs::msg::Odometry odom;
     odom.header.frame_id = "map";
     odom.header.stamp = common::ToRosTime(lidar_end_time_);
-    odom.pose.pose.position.x = state_point_.pos.x();
-    odom.pose.pose.position.y = state_point_.pos.y();
-    odom.pose.pose.position.z = state_point_.pos.z();
-    odom.pose.pose.orientation.w = state_point_.rot.w();
-    odom.pose.pose.orientation.x = state_point_.rot.x();
-    odom.pose.pose.orientation.y = state_point_.rot.y();
-    odom.pose.pose.orientation.z = state_point_.rot.z();
+    odom.pose.pose.position.x = m_ikfState.pos.x();
+    odom.pose.pose.position.y = m_ikfState.pos.y();
+    odom.pose.pose.position.z = m_ikfState.pos.z();
+    odom.pose.pose.orientation.w = m_ikfState.rot.w();
+    odom.pose.pose.orientation.x = m_ikfState.rot.x();
+    odom.pose.pose.orientation.y = m_ikfState.rot.y();
+    odom.pose.pose.orientation.z = m_ikfState.rot.z();
     pub_odom_->publish(odom);
 }
 
@@ -213,75 +213,75 @@ void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double
                 point_world.getVector3fMap() = R_wl * p_body + t_wl;
                 point_world.intensity = point_body.intensity;
 
-                auto &points_near = nearest_points_[i];
+                auto &points_near = m_vNearestPoints[i];
                 vector<float> pointSearchSqDis(options::NUM_MATCH_POINTS);
                 if (ekfom_data.converge) {
                     /** Find the closest surfaces in the map **/
-                    ikdtree_->Nearest_Search(point_world, options::NUM_MATCH_POINTS, points_near, pointSearchSqDis);
-                    point_selected_surf_[i] = points_near.size() >= options::MIN_NUM_MATCH_POINTS;
-                    if (point_selected_surf_[i]) {
-                        point_selected_surf_[i] =
-                            common::esti_plane(plane_coef_[i], points_near, options::ESTI_PLANE_THRESHOLD);
+                    m_pIkdTree->Nearest_Search(point_world, options::NUM_MATCH_POINTS, points_near, pointSearchSqDis);
+                    m_vPointSelectedSurf[i] = points_near.size() >= options::MIN_NUM_MATCH_POINTS;
+                    if (m_vPointSelectedSurf[i]) {
+                        m_vPointSelectedSurf[i] =
+                            common::esti_plane(m_planeCoef[i], points_near, options::ESTI_PLANE_THRESHOLD);
                     }
                 }
 
-                if (point_selected_surf_[i]) {
+                if (m_vPointSelectedSurf[i]) {
                     auto temp = point_world.getVector4fMap();
                     temp[3] = 1.0;
-                    float pd2 = plane_coef_[i].dot(temp);
+                    float pd2 = m_planeCoef[i].dot(temp);
 
                     bool valid_corr = p_body.norm() > 81 * pd2 * pd2;
                     if (valid_corr) {
-                        point_selected_surf_[i] = true;
-                        residuals_[i] = pd2;
+                        m_vPointSelectedSurf[i] = true;
+                        m_vResiduals[i] = pd2;
                     }
                 }
             }//);
         },
         "    ObsModel (Lidar Match)");
 
-    effect_feat_num_ = 0;
+    m_nEffectFeatureNum = 0;
 
-    corr_pts_.resize(cnt_pts);
-    corr_norm_.resize(cnt_pts);
+    m_effectFeaturePoints.resize(cnt_pts);
+    m_effectFeatureNormals.resize(cnt_pts);
     for (int i = 0; i < cnt_pts; i++) {
-        if (point_selected_surf_[i]) {
-            corr_norm_[effect_feat_num_] = plane_coef_[i];
-            corr_pts_[effect_feat_num_] = m_pCloudDsInLidarBodyFrame->points[i].getVector4fMap();
-            corr_pts_[effect_feat_num_][3] = residuals_[i];
+        if (m_vPointSelectedSurf[i]) {
+            m_effectFeatureNormals[m_nEffectFeatureNum] = m_planeCoef[i];
+            m_effectFeaturePoints[m_nEffectFeatureNum] = m_pCloudDsInLidarBodyFrame->points[i].getVector4fMap();
+            m_effectFeaturePoints[m_nEffectFeatureNum][3] = m_vResiduals[i];
 
-            effect_feat_num_++;
+            m_nEffectFeatureNum++;
         }
     }
-    corr_pts_.resize(effect_feat_num_);
-    corr_norm_.resize(effect_feat_num_);
+    m_effectFeaturePoints.resize(m_nEffectFeatureNum);
+    m_effectFeatureNormals.resize(m_nEffectFeatureNum);
 
-    if (effect_feat_num_ < 1) {
+    if (m_nEffectFeatureNum < 1) {
         ekfom_data.valid = false;
         LOG(WARNING) << "No Effective Points!";
         return;
     }
-    LOG(INFO) << "effect points num: " << effect_feat_num_;
+    LOG(INFO) << "effect points num: " << m_nEffectFeatureNum;
     Timer::Evaluate(
         [&, this]() {
             /*** Computation of Measurement Jacobian matrix H and measurements vector ***/
-            ekfom_data.h_x = Eigen::MatrixXd::Zero(effect_feat_num_, 12);  // 23
-            ekfom_data.h.resize(effect_feat_num_);
+            ekfom_data.h_x = Eigen::MatrixXd::Zero(m_nEffectFeatureNum, 12);  // 23
+            ekfom_data.h.resize(m_nEffectFeatureNum);
 
-            index.resize(effect_feat_num_);
+            index.resize(m_nEffectFeatureNum);
             const common::M3F off_R = s.offset_R_L_I.toRotationMatrix().cast<float>();
             const common::V3F off_t = s.offset_T_L_I.cast<float>();
             const common::M3F Rt = s.rot.toRotationMatrix().transpose().cast<float>();
 
             // std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i) {
-            for( size_t i=0; i<effect_feat_num_; ++i ){
-                common::V3F point_this_be = corr_pts_[i].head<3>();
+            for( size_t i=0; i<m_nEffectFeatureNum; ++i ){
+                common::V3F point_this_be = m_effectFeaturePoints[i].head<3>();
                 common::M3F point_be_crossmat = SKEW_SYM_MATRIX(point_this_be);
                 common::V3F point_this = off_R * point_this_be + off_t;
                 common::M3F point_crossmat = SKEW_SYM_MATRIX(point_this);
 
                 /*** get the normal vector of closest surface/corner ***/
-                common::V3F norm_vec = corr_norm_[i].head<3>();
+                common::V3F norm_vec = m_effectFeatureNormals[i].head<3>();
 
                 /*** calculate the Measurement Jacobian matrix H ***/
                 common::V3F C(Rt * norm_vec);
@@ -297,7 +297,7 @@ void LaserMapping::ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double
                 }
 
                 /*** Measurement: distance to the closest surface/corner ***/
-                ekfom_data.h(i) = -corr_pts_[i][3];
+                ekfom_data.h(i) = -m_effectFeaturePoints[i][3];
             }//);
         },
         "    ObsModel (IEKF Build Jacobian)");
@@ -357,12 +357,12 @@ void LaserMapping::FovSegment(){
     vector<BoxPointType> cub_needadd;
     cub_needrm.clear();
     // step2.获得lidar在w系下的位姿
-    vect3 pos_lid = pos_lidar_;
+    vect3 pos_lid = m_lidarPoseInMapFrame;
     // step3.初始化box
     if(!m_bBbxInited){
         for (int i = 0; i < 3; i++){
-            localmap_box_.vertex_min[i] = pos_lid(i) - m_fCubeLen / 2.0;
-            localmap_box_.vertex_max[i] = pos_lid(i) + m_fCubeLen / 2.0;
+            m_localMapBbx.vertex_min[i] = pos_lid(i) - m_fCubeLen / 2.0;
+            m_localMapBbx.vertex_max[i] = pos_lid(i) + m_fCubeLen / 2.0;
         }
         m_bBbxInited = true;
         return;
@@ -371,8 +371,8 @@ void LaserMapping::FovSegment(){
     float dist_to_map_edge[3][2];   // lidar与立方体六个面的距离
     bool need_move = false;         // 是否需要移动
     for (int i = 0; i < 3; i++){
-        dist_to_map_edge[i][0] = fabs(pos_lid(i) - localmap_box_.vertex_min[i]);
-        dist_to_map_edge[i][1] = fabs(pos_lid(i) - localmap_box_.vertex_max[i]);
+        dist_to_map_edge[i][0] = fabs(pos_lid(i) - m_localMapBbx.vertex_min[i]);
+        dist_to_map_edge[i][1] = fabs(pos_lid(i) - m_localMapBbx.vertex_max[i]);
         if (dist_to_map_edge[i][0] <= options::MOV_THRESHOLD * m_fLidarDetectRange 
            || dist_to_map_edge[i][1] <= options::MOV_THRESHOLD * m_fLidarDetectRange)
             need_move = true;
@@ -381,39 +381,39 @@ void LaserMapping::FovSegment(){
 
     // step5. 进行移动localmap操作
     BoxPointType New_LocalMap_Points, tmp_boxpoints_rm, tmp_boxpoints_add;  // 新的局部地图盒子边界点
-    New_LocalMap_Points = localmap_box_;
+    New_LocalMap_Points = m_localMapBbx;
     // step5.1 求取移动距离
     float mov_dist = max((m_fCubeLen - 2.0 * options::MOV_THRESHOLD * m_fLidarDetectRange) * 0.5 * 0.9, 
                           double(m_fLidarDetectRange * (options::MOV_THRESHOLD -1)));
     // step5.2 求取待删除的矩形大小
     for (int i = 0; i < 3; i++){
-        tmp_boxpoints_rm = localmap_box_;
-        tmp_boxpoints_add = localmap_box_;
+        tmp_boxpoints_rm = m_localMapBbx;
+        tmp_boxpoints_add = m_localMapBbx;
         if (dist_to_map_edge[i][0] <= options::MOV_THRESHOLD * m_fLidarDetectRange){
             New_LocalMap_Points.vertex_max[i] -= mov_dist;
             New_LocalMap_Points.vertex_min[i] -= mov_dist;
-            tmp_boxpoints_rm.vertex_min[i] = localmap_box_.vertex_max[i] - mov_dist;
+            tmp_boxpoints_rm.vertex_min[i] = m_localMapBbx.vertex_max[i] - mov_dist;
             cub_needrm.push_back(tmp_boxpoints_rm);
             tmp_boxpoints_add.vertex_min[i] = New_LocalMap_Points.vertex_min[i];
-            tmp_boxpoints_add.vertex_max[i] = localmap_box_.vertex_min[i];
+            tmp_boxpoints_add.vertex_max[i] = m_localMapBbx.vertex_min[i];
             cub_needadd.push_back(tmp_boxpoints_add);
         } else if (dist_to_map_edge[i][1] <= options::MOV_THRESHOLD * m_fLidarDetectRange){
             New_LocalMap_Points.vertex_max[i] += mov_dist;
             New_LocalMap_Points.vertex_min[i] += mov_dist;
-            tmp_boxpoints_rm.vertex_max[i] = localmap_box_.vertex_min[i] + mov_dist;
+            tmp_boxpoints_rm.vertex_max[i] = m_localMapBbx.vertex_min[i] + mov_dist;
             cub_needrm.push_back(tmp_boxpoints_rm);
-            tmp_boxpoints_add.vertex_min[i] = localmap_box_.vertex_max[i];
+            tmp_boxpoints_add.vertex_min[i] = m_localMapBbx.vertex_max[i];
             tmp_boxpoints_add.vertex_max[i] = New_LocalMap_Points.vertex_max[i];
             cub_needadd.push_back(tmp_boxpoints_add);
         }
     }
     // step5.3 更新localmap地图包围盒
-    localmap_box_ = New_LocalMap_Points;
+    m_localMapBbx = New_LocalMap_Points;
     // step5.4 删除待删除点
     PointVector points_history;
-    ikdtree_->acquire_removed_points(points_history);
+    m_pIkdTree->acquire_removed_points(points_history);
     // step5.5 根据cub_needrm删除对应localmap
-    if(cub_needrm.size() > 0) ikdtree_->Delete_Point_Boxes(cub_needrm);
+    if(cub_needrm.size() > 0) m_pIkdTree->Delete_Point_Boxes(cub_needrm);
 
 }
 
@@ -435,9 +435,9 @@ void LaserMapping::MapIncremental() {
         PointBodyToWorld(&(m_pCloudDsInLidarBodyFrame->points[i]), &(m_pCloudDsInMapFrame->points[i]));
         PointType &point_world = m_pCloudDsInMapFrame->points[i];
         // 判断地图上的邻近点不未空，且ekf初始化成功
-        if (!nearest_points_[i].empty() && m_bEkfInited) {
+        if (!m_vNearestPoints[i].empty() && m_bEkfInited) {
             // step1.1 是
-            const PointVector &points_near = nearest_points_[i];
+            const PointVector &points_near = m_vNearestPoints[i];
             // step1.1.1 求该点所在地图栅格的中心坐标
             Eigen::Vector3f center =
                 ((point_world.getVector3fMap() / m_fFilterSizeMapMin).array().floor() + 0.5) * m_fFilterSizeMapMin;
@@ -472,8 +472,8 @@ void LaserMapping::MapIncremental() {
         }
     }//);
 
-    int add_point_size = ikdtree_->Add_Points(points_to_add,true);
-    ikdtree_->Add_Points(point_no_need_downsample,false);
+    int add_point_size = m_pIkdTree->Add_Points(points_to_add,true);
+    m_pIkdTree->Add_Points(point_no_need_downsample,false);
 }
 
 
@@ -484,15 +484,15 @@ void LaserMapping::Run(){
     }
     
     // Step 2.IMU process, kf prediction, get undistortion lidar points in tail lidar_body frame
-    p_imu_->Process(measures_, kf_, scan_undistort_);
+    m_pImu->Process(measures_, m_kf, scan_undistort_);
     if (scan_undistort_->empty() || (scan_undistort_ == nullptr)) {
         LOG(WARNING) << "No point, skip this scan!";
         return;
     }
-    state_point_ = kf_.get_x();
-    pos_lidar_ = state_point_.pos + state_point_.rot * state_point_.offset_T_L_I;
+    m_ikfState = m_kf.get_x();
+    m_lidarPoseInMapFrame = m_ikfState.pos + m_ikfState.rot * m_ikfState.offset_T_L_I;
     LOG(INFO) << "time: "<< std::to_string(measures_.lidar_end_time_);
-    LOG(WARNING) << "imu pos: " << state_point_.pos.transpose();
+    LOG(WARNING) << "imu pos: " << m_ikfState.pos.transpose();
 
     // Step 3. segment ikd tree fov
     Timer::Evaluate(
@@ -500,8 +500,8 @@ void LaserMapping::Run(){
             FovSegment();
         },
         "Fov Segment");
-    // LOG(INFO) << "bbx: " << localmap_box_.vertex_min[0] << " " << localmap_box_.vertex_min[1] << " " << localmap_box_.vertex_min[2]
-        // << " " << localmap_box_.vertex_max[0] << " " << localmap_box_.vertex_max[1] << " " << localmap_box_.vertex_max[2];
+    // LOG(INFO) << "bbx: " << m_localMapBbx.vertex_min[0] << " " << m_localMapBbx.vertex_min[1] << " " << m_localMapBbx.vertex_min[2]
+        // << " " << m_localMapBbx.vertex_max[0] << " " << m_localMapBbx.vertex_max[1] << " " << m_localMapBbx.vertex_max[2];
 
     // Step 4. downsample cur body frame lidar scan 
     Timer::Evaluate(
@@ -517,17 +517,17 @@ void LaserMapping::Run(){
     }
 
     m_pCloudDsInMapFrame->resize(cur_pts);
-    nearest_points_.resize(cur_pts);
-    residuals_.resize(cur_pts, 0);
-    point_selected_surf_.resize(cur_pts, true);
-    plane_coef_.resize(cur_pts, common::V4F::Zero());
+    m_vNearestPoints.resize(cur_pts);
+    m_vResiduals.resize(cur_pts, 0);
+    m_vPointSelectedSurf.resize(cur_pts, true);
+    m_planeCoef.resize(cur_pts, common::V4F::Zero());
     // Step 5.the first scan,init
     if (m_bFirstScan) {
-        if (ikdtree_->Root_Node == nullptr){
-            ikdtree_->set_downsample_param(m_fFilterSizeMapMin);
+        if (m_pIkdTree->Root_Node == nullptr){
+            m_pIkdTree->set_downsample_param(m_fFilterSizeMapMin);
             for(int i = 0; i < cur_pts; i++)
                 PointBodyToWorld(&(m_pCloudDsInLidarBodyFrame->points[i]), &(m_pCloudDsInMapFrame->points[i]));
-            ikdtree_->Build(m_pCloudDsInMapFrame->points);
+            m_pIkdTree->Build(m_pCloudDsInMapFrame->points);
         }
 
         m_fFirstLidarTime = measures_.lidar_bag_time_;
@@ -542,12 +542,12 @@ void LaserMapping::Run(){
             // iterated state estimation
             double solve_H_time = 0;
             // update the observation model, will call nn and point-to-plane residual computation
-            kf_.update_iterated_dyn_share_modified(options::LASER_POINT_COV, solve_H_time);
+            m_kf.update_iterated_dyn_share_modified(options::LASER_POINT_COV, solve_H_time);
             // save the state
-            state_point_ = kf_.get_x();
-            euler_cur_ = SO3ToEuler(state_point_.rot);
-            pos_lidar_ = state_point_.pos + state_point_.rot * state_point_.offset_T_L_I;
-            LOG(WARNING) << "pose after measure: " << state_point_.pos.transpose();
+            m_ikfState = m_kf.get_x();
+            euler_cur_ = SO3ToEuler(m_ikfState.rot);
+            m_lidarPoseInMapFrame = m_ikfState.pos + m_ikfState.rot * m_ikfState.offset_T_L_I;
+            LOG(WARNING) << "pose after measure: " << m_ikfState.pos.transpose();
         },
         "IEKF Solve and Update");
     PublishOdometry();
@@ -560,8 +560,8 @@ void LaserMapping::Run(){
 
 void LaserMapping::PointBodyToWorld(const PointType *pi, PointType *const po) {
     common::V3D p_body(pi->x, pi->y, pi->z);
-    common::V3D p_global(state_point_.rot * (state_point_.offset_R_L_I * p_body + state_point_.offset_T_L_I) +
-                         state_point_.pos);
+    common::V3D p_global(m_ikfState.rot * (m_ikfState.offset_R_L_I * p_body + m_ikfState.offset_T_L_I) +
+                         m_ikfState.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -571,8 +571,8 @@ void LaserMapping::PointBodyToWorld(const PointType *pi, PointType *const po) {
 
 void LaserMapping::PointBodyToWorld(const common::V3F &pi, PointType *const po) {
     common::V3D p_body(pi.x(), pi.y(), pi.z());
-    common::V3D p_global(state_point_.rot * (state_point_.offset_R_L_I * p_body + state_point_.offset_T_L_I) +
-                         state_point_.pos);
+    common::V3D p_global(m_ikfState.rot * (m_ikfState.offset_R_L_I * p_body + m_ikfState.offset_T_L_I) +
+                         m_ikfState.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);

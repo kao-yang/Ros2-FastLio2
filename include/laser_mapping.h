@@ -74,9 +74,7 @@ private:
 
     /// modules
     std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
-    std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
-    std::shared_ptr<KD_TREE<PointType>> ikdtree_ = nullptr;       // ikdtree
-    esekfom::esekf<state_ikfom, 12, input_ikfom> kf_;  // esekf
+
 
     /// params
     std::vector<double> extrinT_{3, 0.0};  // lidar-imu translation
@@ -91,21 +89,21 @@ private:
     
 
     // IEKF state
-    state_ikfom state_point_;                          // ekf current state
-    vect3 pos_lidar_;                                  // lidar position after eskf update
+    
+    
     common::V3D euler_cur_ = common::V3D::Zero();      // rotation in euler angles
     bool localmap_initialized_ = false;
-    BoxPointType localmap_box_; 
+     
 
     /// point clouds data
     
-    std::vector<PointVector> nearest_points_;         // nearest points of current scan
-    common::VV4F corr_pts_;                           // inlier pts
-    common::VV4F corr_norm_;                          // inlier plane norms
     
-    std::vector<float> residuals_;                    // point-to-plane residuals
-    std::vector<bool> point_selected_surf_;           // selected points
-    common::VV4F plane_coef_;                         // plane coeffs
+    
+    
+    
+    
+    
+    
     
 
     /// ros pub and sub stuffs
@@ -120,7 +118,7 @@ private:
     double last_timestamp_lidar_ = 0;
     double lidar_end_time_ = 0;
     
-    
+    int frame_num_ = 0;
     
 
     /// statistics and flags ///
@@ -132,7 +130,7 @@ private:
     double lidar_mean_scantime_ = 0.0;
     int scan_num_ = 0;  // get lidar scan num in SyncPackages()， to get mean lidar scan time
     bool timediff_set_flg_ = false;
-    int effect_feat_num_ = 0, frame_num_ = 0; // frame_num: successed frame in run
+    
     
 
     /////////////////////////  debug show / save /////////////////////////////////////////////////////////
@@ -168,6 +166,21 @@ private:
     bool m_bBbxInited = false;
     bool m_bEkfInited = false;
     double m_fFirstLidarTime = 0.0;
+    BoxPointType m_localMapBbx;
+    std::vector<PointVector> m_vNearestPoints;         // nearest points of current scan
+    std::vector<bool> m_vPointSelectedSurf;           // selected points
+    common::VV4F m_planeCoef;                         // plane coeffs
+    std::vector<float> m_vResiduals;                    // point-to-plane residuals
+    size_t m_nEffectFeatureNum = 0;  // frame_num: successed frame in run
+    common::VV4F m_effectFeaturePoints;                           // inlier pts
+    common::VV4F m_effectFeatureNormals;                          // inlier plane norms
+    state_ikfom m_ikfState;                          // ekf current state
+    vect3 m_lidarPoseInMapFrame;                                  // lidar position after eskf update
+
+    std::shared_ptr<ImuProcess> m_pImu = nullptr;                 // imu process
+    std::shared_ptr<KD_TREE<PointType>> m_pIkdTree = nullptr;       // ikdtree
+    esekfom::esekf<state_ikfom, 12, input_ikfom> m_kf;  // esekf
+
 };
 
 }  // namespace fast_lio
