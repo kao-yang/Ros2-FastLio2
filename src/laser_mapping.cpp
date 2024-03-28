@@ -491,6 +491,26 @@ void LaserMapping::Run(){
     if (!SyncPackages()) {
         return;
     }
+    if ( !SyncMeasure() ){
+        return;
+    }
+
+    measures_.lidar_bag_time_ = m_measure.pLidar->fBeginTime;
+    measures_.lidar_end_time_ = m_measure.pLidar->fEndTime;
+    measures_.imu_.clear();
+    for(const auto & pImu : m_measure.qPImu){
+        sensor_msgs::msg::Imu::SharedPtr pImuMsg( new sensor_msgs::msg::Imu );
+        pImuMsg->header.stamp = common::ToRosTime( pImu->fTime );
+        pImuMsg->angular_velocity.x = pImu->angularVelocity.x();
+        pImuMsg->angular_velocity.y = pImu->angularVelocity.y();
+        pImuMsg->angular_velocity.z = pImu->angularVelocity.z();
+
+        pImuMsg->linear_acceleration.x = pImu->linearAcceleration.x();
+        pImuMsg->linear_acceleration.y = pImu->linearAcceleration.y();
+        pImuMsg->linear_acceleration.z = pImu->linearAcceleration.z();
+        measures_.imu_.push_back(pImuMsg);
+    }
+
     
     // Step 2.IMU process, kf prediction, get undistortion lidar points in tail lidar_body frame
     m_pImu->Process(measures_, m_kf, scan_undistort_);
@@ -641,6 +661,42 @@ void LaserMapping::PointBodyToWorld(const common::V3F &pi, PointType *const po) 
     Eigen::Vector3d linAcc = Eigen::Vector3d(pMsg->linear_acceleration.x, pMsg->linear_acceleration.y, 
                                 pMsg->linear_acceleration.z);
     return ::humanoid_slam::sensor::ImuData{fTime, angVec, linAcc};
+}
+
+bool LaserMapping::SyncMeasure(){
+    // Step 0. lock
+    std::unique_lock<std::mutex> lock(mtx_buffer_);
+    
+    // Step 1. not be empty
+    if (m_qLidarDeque.empty() || m_qImuDeque.empty()) {
+        return false;
+    }
+
+    // Step 2. get new lidar
+    if ( !m_bLidarPushed ){
+        m_measure.pLidar =  m_qLidarDeque.front();
+        m_bLidarPushed = true;
+    }
+
+    // Step 3. make sure imu time is small than measure lidar
+    if ( m_qImuDeque.back()->fTime < m_measure.pLidar->fEndTime ){
+        return false;
+    }
+
+    // Step 4. get imu queue
+    double fImuTime = m_qImuDeque.front()->fTime;
+    m_measure.qPImu.clear();
+    while( !m_qImuDeque.empty() && fImuTime <= m_measure.pLidar->fEndTime ){
+        fImuTime = m_qImuDeque.front()->fTime;
+        if (fImuTime > m_measure.pLidar->fEndTime) { break; }
+        m_measure.qPImu.push_back(m_qImuDeque.front());
+        m_qImuDeque.pop_front();
+    }
+
+    // Step 5. return true
+    m_qLidarDeque.pop_front();
+    m_bLidarPushed = false;
+    return true;
 }
 
 } // namespace fast_lio

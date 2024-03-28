@@ -27,6 +27,7 @@
 
 #include "sensor/ImuData.h"
 #include "sensor/TimedPointCloudData.h"
+#include "sensor/LidarOdomMeasureData.h"
 
 namespace rsHoliesRos {
 struct EIGEN_ALIGN16 Point {
@@ -201,7 +202,8 @@ public:
         ToImuData( const sensor_msgs::msg::Imu::ConstSharedPtr& pMsg );
     std::deque< std::shared_ptr<::humanoid_slam::sensor::TimedPointCloudData> > m_qLidarDeque;
     std::deque< std::shared_ptr<::humanoid_slam::sensor::ImuData> > m_qImuDeque;
-    // bool SyncMeasure();
+    bool SyncMeasure();
+    ::humanoid_slam::sensor::LidarOdomMeasureData m_measure;
 };
 
 }  // namespace fast_lio
