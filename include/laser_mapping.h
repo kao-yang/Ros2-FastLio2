@@ -21,14 +21,17 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/conditional_removal.h>
 
-// #include "imu_processing.h"
-#include "ImuProcess.h"
-#include "pointcloud_preprocess.h"
-#include "ikd-Tree/ikd_Tree.h"
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 
-#include "sensor/ImuData.h"
-#include "sensor/TimedPointCloudData.h"
-#include "sensor/LidarOdomMeasureData.h"
+#include "humanoid_slam/sensor/ImuData.h"
+#include "humanoid_slam/sensor/TimedPointCloudData.h"
+#include "humanoid_slam/sensor/LidarOdomMeasureData.h"
+#include "humanoid_slam/HumanoidSlamInterface.h"
+#include "humanoid_slam/HumanoidSlamBuilder.h"
+#include "sophus/se3.hpp"
+
 
 namespace rsHoliesRos {
 struct EIGEN_ALIGN16 Point {
@@ -53,7 +56,6 @@ class LaserMapping : public rclcpp::Node {
     LaserMapping(const std::string& sParamsDir);
     LaserMapping() = delete;
     ~LaserMapping() {
-        fast_lio::Timer::PrintAll();
         LOG(INFO) << "laser mapping deconstruct";
     }
     bool LoadParamsFromYAML(const std::string &yaml);
@@ -61,23 +63,12 @@ class LaserMapping : public rclcpp::Node {
     // callbacks of lidar and imu
     void StandardPCLCallBack(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
     void IMUCallBack(const sensor_msgs::msg::Imu::ConstSharedPtr msg);
-    void PublishOdometry();
 
-    // sync lidar with imu
-    
-    bool SyncPackages();
-    void FovSegment();
-    
-    void Run();
+private:
+    double FromRosTime(const builtin_interfaces::msg::Time& time){
+        return time.sec + static_cast<double>(time.nanosec) / 1000000000.f;
+    }
 
-   private:
-
-
-    // tools
-    void PointBodyToWorld(PointType const *pi, PointType *const po);
-    void PointBodyToWorld(const common::V3F &pi, PointType *const po);
-    // void PointBodyLidarToIMU(PointType const *const pi, PointType *const po);
-    // void PrintState(const state_ikfom &s);
 
 private:
     // ros
@@ -87,124 +78,21 @@ private:
 
     // sensor deque
     std::mutex mtx_buffer_;
-    std::deque<double> time_buffer_;
-    std::deque<PointCloudType::Ptr> lidar_buffer_;
-    std::deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer_;
-
-    /// modules
-    std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
-
-
-    /// params
-    std::vector<double> extrinT_{3, 0.0};  // lidar-imu translation
-    std::vector<double> extrinR_{9, 0.0};  // lidar-imu rotation
-    
-    
-    
-
-    // sync sensor deque
-    common::MeasureGroup measures_;                    // sync IMU and lidar scan
-    
-    
-
-    // IEKF state
-    
-    
-    common::V3D euler_cur_ = common::V3D::Zero();      // rotation in euler angles
-    bool localmap_initialized_ = false;
-     
-
-    /// point clouds data
 
     /// ros pub and sub stuffs
     ::rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
     ::rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_;
     ::rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
-
-    /// options
+    std::unique_ptr<::humanoid_slam::HumanoidSlamInterface> m_slam;
     
-    
-    double timediff_lidar_wrt_imu_ = 0.0;
-    double last_timestamp_lidar_ = 0;
-    double lidar_end_time_ = 0;
-    
-    int frame_num_ = 0;
-    
-
-    /// statistics and flags ///
-    int scan_count_ = 0;
-    int publish_count_ = 0;
-    
-    
-    int pcd_index_ = 0;
-    double lidar_mean_scantime_ = 0.0;
-    int scan_num_ = 0;  // get lidar scan num in SyncPackages()， to get mean lidar scan time
-    bool timediff_set_flg_ = false;
-    
-    
-
-    /////////////////////////  debug show / save /////////////////////////////////////////////////////////
-    bool run_in_offline_ = true;
-    bool path_pub_en_ = true;
-    bool scan_pub_en_ = false;
-    bool dense_pub_en_ = false;
-    bool scan_body_pub_en_ = false;
-    bool scan_effect_pub_en_ = false;
-    bool pcd_save_en_ = false;
-    bool runtime_pos_log_ = true;
-    int pcd_save_interval_ = -1;
-    bool path_save_en_ = false;
-    std::string dataset_;
-
-///////////////////////////////////////////
-    double m_fCubeLen = 0;
-    double m_fFilterSizeMapMin = 0;
-    float m_fLidarDetectRange = 150.0f;
-    bool m_bExtrinsicEstEn = true;
-    bool m_bTimeSyncEn = false;
-
-    pcl::VoxelGrid<PointType> m_voxelScan;            // voxel filter for current scan
-
-    bool m_bLidarPushed = false;
-    double m_fLastImuTime = -1.0;
-
-    CloudPtr scan_undistort_{new PointCloudType()};   // scan after undistortion
-    CloudPtr m_pCloudDsInLidarBodyFrame{new PointCloudType()};   // downsampled scan in body
-    CloudPtr m_pCloudDsInMapFrame{new PointCloudType()};  // downsampled scan in world
-
-    bool m_bFirstScan = true;
-    bool m_bBbxInited = false;
-    bool m_bEkfInited = false;
-    double m_fFirstLidarTime = 0.0;
-    BoxPointType m_localMapBbx;
-    std::vector<PointVector> m_vNearestPoints;         // nearest points of current scan
-    std::vector<bool> m_vPointSelectedSurf;           // selected points
-    common::VV4F m_planeCoef;                         // plane coeffs
-    std::vector<float> m_vResiduals;                    // point-to-plane residuals
-    size_t m_nEffectFeatureNum = 0;  // frame_num: successed frame in run
-    common::VV4F m_effectFeaturePoints;                           // inlier pts
-    common::VV4F m_effectFeatureNormals;                          // inlier plane norms
-    state_ikfom m_ikfState;                          // ekf current state
-    vect3 m_lidarPoseInMapFrame;                                  // lidar position after eskf update
-
-    std::shared_ptr<ImuProcess> m_pImu = nullptr;                 // imu process
-    std::shared_ptr<KD_TREE<PointType>> m_pIkdTree = nullptr;       // ikdtree
-    esekfom::esekf<state_ikfom, 12, input_ikfom> m_kf;  // esekf
 
 public:
-    void MapIncremental();
-    void ObsModel(state_ikfom &ikfState, esekfom::dyn_share_datastruct<double> &ikfH);
-
     ::humanoid_slam::sensor::TimedPointCloudData
         RsHoliesToTimedPointCloudData
         ( const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pMsg );
 
     ::humanoid_slam::sensor::ImuData 
         ToImuData( const sensor_msgs::msg::Imu::ConstSharedPtr& pMsg );
-    std::deque< std::shared_ptr<::humanoid_slam::sensor::TimedPointCloudData> > m_qLidarDeque;
-    std::deque< std::shared_ptr<::humanoid_slam::sensor::ImuData> > m_qImuDeque;
-    bool SyncMeasure();
-    ::humanoid_slam::sensor::LidarOdomMeasureData m_measure;
 };
 
 }  // namespace fast_lio

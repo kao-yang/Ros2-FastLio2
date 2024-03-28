@@ -7,11 +7,13 @@
 #include <numeric>
 #include <string>
 
-namespace fast_lio {
+namespace humanoid_slam {
+namespace lidar_odom {
+namespace ikd_odom {
 
 /// timer
 class Timer {
-   public:
+public:
     struct TimerRecord {
         TimerRecord() = default;
         TimerRecord(const std::string& name, double time_usage) {
@@ -22,6 +24,12 @@ class Timer {
         std::vector<double> time_usage_in_ms_;
     };
 
+private:
+    static std::map<std::string, TimerRecord> records_;
+   
+public:
+
+
     /**
      * call F and save its time usage
      * @tparam F
@@ -29,7 +37,7 @@ class Timer {
      * @param func_name
      */
     template <class F>
-    static void Evaluate(F&& func, const std::string& func_name) {
+    static void Evaluate(F&& func, const std::string& func_name){
         auto t1 = std::chrono::high_resolution_clock::now();
         std::forward<F>(func)();
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -43,7 +51,7 @@ class Timer {
     }
 
     /// print the run time
-    static void PrintAll() {
+    static void PrintAll(){
         LOG(INFO) << ">>> ===== Printing run time =====";
         for (const auto& r : records_) {
             LOG(INFO) << "> [ " << r.first << " ] average time usage: "
@@ -55,7 +63,7 @@ class Timer {
     }
 
     /// dump to a log file
-    static void DumpIntoFile(const std::string& file_name) {
+    static void DumpIntoFile(const std::string& file_name){
         std::ofstream ofs(file_name, std::ios::out);
         if (!ofs.is_open()) {
             LOG(ERROR) << "Failed to open file: " << file_name;
@@ -87,7 +95,7 @@ class Timer {
     }
 
     /// get the average time usage of a function
-    static double GetMeanTime(const std::string& func_name) {
+    static double GetMeanTime(const std::string& func_name){
         if (records_.find(func_name) == records_.end()) {
             return 0.0;
         }
@@ -98,10 +106,11 @@ class Timer {
     }
 
     /// clean the records
-    static void Clear() { records_.clear(); }
+    static void Clear(){ records_.clear(); }
 
-   private:
-    static std::map<std::string, TimerRecord> records_;
+
 };
 
-}  // namespace fast_lio
+}  // namespace ikd_odom
+}  // namespace lidar_odom
+}  // namespace humanoid_slam

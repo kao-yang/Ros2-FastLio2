@@ -1,9 +1,8 @@
-#include "ImuProcess.h"
+#include "humanoid_slam/lidar_odom/ikd_odom/ImuProcess.h"
 
-// namespace humanoid_slam {
-// namespace lidar_odom {
-// namespace ikd_odom {
-namespace fast_lio{
+namespace humanoid_slam {
+namespace lidar_odom {
+namespace ikd_odom {
 
 constexpr int MAX_INI_COUNT = 20;
 
@@ -295,5 +294,5 @@ void ImuProcess::Process(const ::humanoid_slam::sensor::LidarOdomMeasureData &me
 }
 
 }
-// }
-// }
+}
+}

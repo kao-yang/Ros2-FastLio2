@@ -102,11 +102,11 @@ struct SubManifold : public T {
 
     //! Construct from derived type
     template <class X>
-    explicit SubManifold(const X& t) : T(t){};
+    explicit SubManifold(const X& t) : T(t){}
 
     //! Construct from internal type
     // explicit
-    SubManifold(const T& t) : T(t){};
+    SubManifold(const T& t) : T(t){}
 
     //! inherit assignment operator
     using T::operator=;

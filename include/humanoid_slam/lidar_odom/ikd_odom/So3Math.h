@@ -3,7 +3,9 @@
 #include <Eigen/Core>
 #include <cmath>
 
-namespace fast_lio {
+namespace humanoid_slam{
+namespace lidar_odom{
+namespace ikd_odom{
 
 template <typename T>
 inline Eigen::Matrix<T, 3, 3> SKEW_SYM_MATRIX(const Eigen::Matrix<T, 3, 1> &v) {
@@ -89,4 +91,6 @@ Eigen::Matrix<T, 3, 1> RotMtoEuler(const Eigen::Matrix<T, 3, 3> &rot) {
     return ang;
 }
 
-}  // namespace fast_lio
+} // namespace ikd_odom
+} // namespace lidar_odom
+} // namespace humanoid_slam

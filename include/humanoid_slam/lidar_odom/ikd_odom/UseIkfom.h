@@ -2,7 +2,9 @@
 
 #include "IKFoM_toolkit/esekfom/esekfom.hpp"
 
-namespace fast_lio {
+namespace humanoid_slam {
+namespace lidar_odom{
+namespace ikd_odom{
 
 typedef MTK::vect<3, double> vect3;
 typedef MTK::SO3<double> SO3;
@@ -29,4 +31,6 @@ Eigen::Matrix<double, 24, 12> df_dw(state_ikfom &s, const input_ikfom &in);
 
 vect3 SO3ToEuler(const SO3 &orient);
 
-}  // namespace fast_lio
+} // namespace ikd_odom
+} // namespace lidar_odom
+} // namespace humanoid_slam 

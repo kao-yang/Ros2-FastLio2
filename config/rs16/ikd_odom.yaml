@@ -1,0 +1,26 @@
+odom:                           # odom params
+  cube_side_length: 500         # ikd local map cube size, m
+  filter_size_surf: 0.5         # input cloud down sampling box size, m
+  filter_size_map: 0.5          # ikd local map down sampling box size, m
+  max_iteration: 3              # eskf max iteration  
+  esti_plane_threshold: 0.1     # feature point - map plane distance threshold, to filter outline
+  acc_cov: 0.1                  # accelerometer covariance
+  gyr_cov: 0.1                  # gyroscope covariance
+  b_acc_cov: 0.0001             # accelerometer bias covariance
+  b_gyr_cov: 0.0001             # gyroscope bias covariance
+  lidar_range: 100              # lidar detect range, m
+  extrinsic_est_en: false        # enable extrinsic estimate
+  extrinsic_T: [ -0.092227430293060, 0.047974446594559, 0.114346334037126 ]   # extrinsic t I->L 0.114346334037126
+  # extrinsic_R: [ 0.9988652,  0.0294028, -0.0374664,                           # extrinsic R I->L
+  #             -0.0299010,  0.9994708, -0.0128084,
+  #             0.0370700,  0.0139141,  0.9992158 ]
+  # extrinsic_T: [ 0, 0, 0 ]   # extrinsic t I->L
+  extrinsic_R: [ 1,  0, 0,                           # extrinsic R I->L
+              0,  1, 0,
+              0,  0,  1 ]
+  time_sync_en: false           # enable time delay estimator, TODO
+
+pcd_map:                        # pcd map params
+  pcd_save_en: false             # enable pcd save
+  load_pcd_map: false            # load history map
+  update_pcd_map: true         # update map

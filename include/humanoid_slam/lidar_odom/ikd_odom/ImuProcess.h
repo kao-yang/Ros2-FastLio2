@@ -5,15 +5,15 @@
 #include <deque>
 #include <fstream>
 
-#include "common_lib.h"
-#include "so3_math.h"
-#include "use-ikfom.hpp"
-#include "utils.h"
-#include "sensor/LidarOdomMeasureData.h"
+#include "humanoid_slam/lidar_odom/ikd_odom/CommonLib.h"
+#include "humanoid_slam/lidar_odom/ikd_odom/So3Math.h"
+#include "humanoid_slam/lidar_odom/ikd_odom/UseIkfom.h"
+#include "humanoid_slam/lidar_odom/ikd_odom/Timer.h"
+#include "humanoid_slam/sensor/LidarOdomMeasureData.h"
 
-// namespace humanoid_slam {
-// namespace lidar_odom {
-namespace fast_lio {
+namespace humanoid_slam {
+namespace lidar_odom {
+namespace ikd_odom {
 
 /// IMU Process and undistortion
 class ImuProcess {
@@ -66,7 +66,7 @@ class ImuProcess {
 
 
 }  // namespace ikd_odom
-// }  // namespace lidar_odom
-// }  // namespace humanoid_slam
+}  // namespace lidar_odom
+}  // namespace humanoid_slam
 
 

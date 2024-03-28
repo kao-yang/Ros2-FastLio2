@@ -1,6 +1,8 @@
-#include "use-ikfom.hpp"
+#include "humanoid_slam/lidar_odom/ikd_odom/UseIkfom.h"
 
-namespace fast_lio{
+namespace humanoid_slam {
+namespace lidar_odom{
+namespace ikd_odom{
 
 MTK::get_cov<process_noise_ikfom>::type process_noise_cov() {
     MTK::get_cov<process_noise_ikfom>::type cov = MTK::get_cov<process_noise_ikfom>::type::Zero();
@@ -87,4 +89,6 @@ vect3 SO3ToEuler(const SO3 &orient) {
     return euler_ang;
 }
 
+}
+}
 }

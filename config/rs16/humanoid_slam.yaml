@@ -1,0 +1,13 @@
+modules_type:
+  pose_extrapolator: 0
+  lidar_odom: 1
+  grid_map: 0
+  loop_fusion: 0
+  pose_graph: 0
+
+modules_yaml:
+  pose_extrapolator_yaml: ""
+  lidar_odom_yaml: "ikd_odom.yaml"
+  grid_map_yaml: ""
+  loop_fusion_yaml: ""
+  pose_graph_yaml: ""

@@ -1,10 +1,11 @@
 add_library(${PROJECT_NAME}
     laser_mapping.cpp
-    options.cpp
-    pointcloud_preprocess.cpp
-    utils.cpp
-    use-ikform.cpp
-    ImuProcess.cpp
+    humanoid_slam/HumanoidSlamBuilder.cpp
+    humanoid_slam/lidar_odom/ikd_odom/IkdOdomBuilder.cpp
+    humanoid_slam/lidar_odom/ikd_odom/ImuProcess.cpp
+    humanoid_slam/lidar_odom/ikd_odom/Options.cpp
+    humanoid_slam/lidar_odom/ikd_odom/Timer.cpp
+    humanoid_slam/lidar_odom/ikd_odom/UseIkfom.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}

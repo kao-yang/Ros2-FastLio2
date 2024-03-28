@@ -1,8 +1,5 @@
 #pragma once
 
-#include <nav_msgs/msg/odometry.hpp>
-#include <sensor_msgs/msg/imu.hpp>
-
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
@@ -11,17 +8,15 @@
 #include <boost/array.hpp>
 #include <unsupported/Eigen/ArpackSupport>
 
-#include "options.h"
-#include "so3_math.h"
-#include "utils.h"
-#include "options.h"
+#include "Options.h"
+#include "So3Math.h"
+#include "humanoid_slam/sensor/TimedPointCloudData.h"
 
-using PointType = pcl::PointXYZINormal;
-using PointCloudType = pcl::PointCloud<PointType>;
-using CloudPtr = PointCloudType::Ptr;
 using PointVector = std::vector<PointType, Eigen::aligned_allocator<PointType>>;
 
-namespace fast_lio::common {
+namespace humanoid_slam{
+namespace lidar_odom{
+namespace ikd_odom::common {
 
 constexpr double G_m_s2 = 9.81;  // Gravity const in GuangDong/China
 
@@ -49,9 +44,8 @@ inline Eigen::Matrix<S, 3, 3> MatFromArray(const boost::array<S, 9> &v) {
     return m;
 }
 
-inline std::string DEBUG_FILE_DIR(const std::string &name) { return std::string(ROOT_DIR) + "Log/" + name; }
+// inline std::string DEBUG_FILE_DIR(const std::string &name) { return std::string(ROOT_DIR) + "Log/" + name; }
 
-// using Pose6D = faster_lio::Pose6D;
 using V3D = Eigen::Vector3d;
 using V4D = Eigen::Vector4d;
 using V5D = Eigen::Matrix<double, 5, 1>;
@@ -75,16 +69,6 @@ const M3F Eye3f = M3F::Identity();
 const V3D Zero3d(0, 0, 0);
 const V3F Zero3f(0, 0, 0);
 
-/// sync imu and lidar measurements
-struct MeasureGroup {
-    MeasureGroup() { this->lidar_.reset(new PointCloudType()); };
-
-    double lidar_bag_time_ = 0;
-    double lidar_end_time_ = 0;
-    PointCloudType::Ptr lidar_ = nullptr;
-    std::deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_;
-};
-
 template <typename T>
 T rad2deg(const T &radians) {
     return radians * 180.0 / M_PI;
@@ -94,6 +78,15 @@ template <typename T>
 T deg2rad(const T &degrees) {
     return degrees * M_PI / 180.0;
 }
+
+// struct Pose6D{
+//     double offset_time; // the offset time of IMU measurement w.r.t the first lidar point
+//     std::vector<double> acc = std::vector<double>(3,0);      // the preintegrated total acceleration (global frame) at the Lidar origin
+//     std::vector<double> gyr = std::vector<double>(3,0);      // the unbiased angular velocity (body frame) at the Lidar origin
+//     std::vector<double> vel = std::vector<double>(3,0);      // the preintegrated velocity (global frame) at the Lidar origin
+//     std::vector<double> pos = std::vector<double>(3,0);      // the preintegrated position (global frame) at the Lidar origin
+//     std::vector<double> rot = std::vector<double>(9,0);      // the preintegrated rotation (global frame) at the Lidar origin 9
+// };
 
 struct Pose6D{
     double offset_time; // the offset time of IMU measurement w.r.t the first lidar point
@@ -115,10 +108,26 @@ struct Pose6D{
  * @param R
  * @return
  */
+// template <typename T>
+// Pose6D set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::Matrix<T, 3, 1> &g,
+//                   const Eigen::Matrix<T, 3, 1> &v, const Eigen::Matrix<T, 3, 1> &p, const Eigen::Matrix<T, 3, 3> &R) {
+//     Pose6D rot_kp;
+
+//     rot_kp.offset_time = t;
+//     for (int i = 0; i < 3; i++) {
+//         rot_kp.acc[i] = a(i);
+//         rot_kp.gyr[i] = g(i);
+//         rot_kp.vel[i] = v(i);
+//         rot_kp.pos[i] = p(i);
+//         for (int j = 0; j < 3; j++) rot_kp.rot[i * 3 + j] = R(i, j);
+//     }
+//     return rot_kp;
+// }
 template <typename T>
 Pose6D set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::Matrix<T, 3, 1> &g,
                   const Eigen::Matrix<T, 3, 1> &v, const Eigen::Matrix<T, 3, 1> &p, const Eigen::Matrix<T, 3, 3> &R) {
     Pose6D rot_kp;
+
     rot_kp.offset_time = t;
     for (int i = 0; i < 3; i++) {
         rot_kp.acc[i] = a(i);
@@ -129,6 +138,7 @@ Pose6D set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::
     rot_kp.rot = R;
     return rot_kp;
 }
+
 
 /* comment
 plane equation: Ax + By + Cz + D = 0
@@ -223,7 +233,7 @@ inline bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &po
         b.setOnes();
         b *= -1.0f;
 
-        for (int j = 0; j < point.size(); j++) {
+        for (size_t j = 0; j < point.size(); j++) {
             A(j, 0) = point[j].x;
             A(j, 1) = point[j].y;
             A(j, 2) = point[j].z;
@@ -239,7 +249,7 @@ inline bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &po
     pca_result(0) = normvec(0) / n;     // 单位法向量
     pca_result(1) = normvec(1) / n;
     pca_result(2) = normvec(2) / n;
-    pca_result(3) = 1.0 / n;            // ?
+    pca_result(3) = 1.0 / n;
 
     for (const auto &p : point) {
         Eigen::Matrix<T, 4, 1> temp = p.getVector4fMap();
@@ -250,17 +260,7 @@ inline bool esti_plane(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &po
     }
     return true;
 }
-inline double FromRosTime(const builtin_interfaces::msg::Time& time){
-    return time.sec + static_cast<double>(time.nanosec) / 1000000000.f;
-}
 
-inline builtin_interfaces::msg::Time ToRosTime(const double& time){
-    builtin_interfaces::msg::Time stamp;
-    int32_t sec = static_cast<int32_t>(time);
-    int32_t nanosec = static_cast<int32_t>( (time - sec) * 1000000000 );
-    stamp.sec = sec;
-    stamp.nanosec = nanosec;
-    return stamp;
-}
-
-}  // namespace fast_lio::common
+} // namespace ikd_odom::common
+} // namespace lidar_odom
+} // namespace humanoid_slam
